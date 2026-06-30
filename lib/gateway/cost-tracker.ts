@@ -1,5 +1,5 @@
 import { supabase } from "@/lib/supabase"
-import { AIResponse, TaskType } from "../types/ai"
+import { AIResponse, TaskType } from "../../types/ai"
 
 const costPer1kTokens: Record<string, number> = {
   "groq/llama3-8b-8192": 0.0001,
