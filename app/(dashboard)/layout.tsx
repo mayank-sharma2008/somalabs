@@ -26,7 +26,6 @@ export default async function DashboardLayout({
     <div className="flex h-screen bg-[#0c0c0c] text-white overflow-hidden">
       <SidebarClient
         user={{ firstName: user?.firstName }}
-        recents={recents}
       />
       <main className="flex-1 overflow-auto">
         {children}
