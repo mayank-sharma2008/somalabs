@@ -30,7 +30,7 @@ export default function SignInPage() {
       `}</style>
 
       {/* Form panel */}
-      <div className="flex-1 lg:w-[46%] flex flex-col">
+      <div className="flex-1 lg:w-[38%] flex flex-col">
 
         <div className="flex items-center gap-2 px-10 pt-10">
           <div className="w-6 h-6 rounded-full overflow-hidden
@@ -72,7 +72,8 @@ export default function SignInPage() {
                 },
                 elements: {
                   rootBox: "w-full",
-                  card: "bg-transparent shadow-none p-0 w-full",
+                  card: "bg-transparent shadow-none border border-white/15 " +
+                    "rounded-2xl p-6 w-full",
                   header: "!hidden",
                   headerTitle: "!hidden",
                   headerSubtitle: "!hidden",
@@ -102,7 +103,7 @@ export default function SignInPage() {
                   otpCodeFieldInput: "bg-white/[0.06] border-white/20 text-white",
                   footer: "mt-6",
                 },
-              } as any}
+              }}
             />
           </div>
         </div>
