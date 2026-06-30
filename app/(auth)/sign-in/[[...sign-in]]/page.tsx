@@ -103,7 +103,7 @@ export default function SignInPage() {
                   otpCodeFieldInput: "bg-white/[0.06] border-white/20 text-white",
                   footer: "mt-6",
                 },
-              }}
+              } as any}
             />
           </div>
         </div>
