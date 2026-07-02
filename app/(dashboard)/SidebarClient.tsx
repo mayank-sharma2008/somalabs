@@ -97,7 +97,7 @@ export default function SidebarClient({
       className="flex flex-col shrink-0 h-full"
       style={{
         width: "260px",
-        background: "#121212",
+        background: "#000000",
         borderRight: "1px solid #1A1A1A",
       }}
     >

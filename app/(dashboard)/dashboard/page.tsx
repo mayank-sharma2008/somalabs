@@ -119,7 +119,7 @@ function CodeBlock({ language, code }: { language: string; code: string }) {
               className="flex items-center gap-1.5 text-xs transition-colors"
               style={{ color: "#6B6B6B" }}
               onMouseEnter={(e) => (e.currentTarget.style.color = "#A3A3A3")}
-              onMouseLeave={(e) => (e.currentTarget.style.color = "#6B6B6B")}
+              onMouseLeave={(e) => (e.currentTarget.style.color = "#090909")}
             >
               {copied ? <><Check size={11} />Copied</> : <><Copy size={11} />Copy</>}
             </button>
