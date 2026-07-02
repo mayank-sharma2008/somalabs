@@ -2,21 +2,23 @@
 
 import { useState, useRef, useEffect } from "react"
 import {
-  Search,
-  ImageIcon as ImageLucide,
+  ArrowUp,
+  Sun,
+  ChevronDown,
+  MessageSquare,
+  ImageIcon,
   Code,
+  Search,
   Music,
   Video,
-  ArrowRight,
-  Loader2,
-  User,
-  Download,
-  RefreshCw,
   Copy,
   Check,
   Play,
+  Download,
+  Loader2,
+  RefreshCw,
   Pause,
-  Square
+  Square,
 } from "lucide-react"
 import Image from "next/image"
 import ReactMarkdown from "react-markdown"
@@ -42,99 +44,38 @@ interface Message {
   sources?: Source[]
 }
 
-const modes: {
-  label: string
-  icon: any
-  value: Mode
-  placeholder: string
-}[] = [
-  { label: "Chat", icon: Search, value: "chat", placeholder: "Ask anything..." },
-  { label: "Image", icon: ImageLucide, value: "image", placeholder: "Describe an image to generate..." },
-  { label: "Code", icon: Code, value: "code", placeholder: "Describe what code you need..." },
-  { label: "Search", icon: Search, value: "search", placeholder: "Search the web with AI..." },
-  { label: "Audio", icon: Music, value: "audio", placeholder: "Type text to convert into speech..." },
-  { label: "Video", icon: Video, value: "video", placeholder: "Describe a short video to generate..." },
+const modeOptions: { label: string; icon: any; value: Mode }[] = [
+  { label: "Chat", icon: MessageSquare, value: "chat" },
+  { label: "Image", icon: ImageIcon, value: "image" },
+  { label: "Code", icon: Code, value: "code" },
+  { label: "Search", icon: Search, value: "search" },
+  { label: "Audio", icon: Music, value: "audio" },
+  { label: "Video", icon: Video, value: "video" },
 ]
 
-const suggestions: Record<Mode, { icon: string; text: string }[]> = {
-  chat: [
-    { icon: "⚡", text: "Write me a Python script" },
-    { icon: "🧠", text: "Explain quantum computing" },
-    { icon: "📝", text: "Help me write an email" },
-    { icon: "🌐", text: "Create a landing page" },
-    { icon: "🐛", text: "Help me debug my code" },
-    { icon: "💡", text: "Give me startup ideas" },
-  ],
-  image: [
-    { icon: "🌆", text: "Futuristic city at night with neon lights" },
-    { icon: "🐺", text: "Wolf howling at the moon in a forest" },
-    { icon: "🚀", text: "Astronaut floating in a colorful nebula" },
-    { icon: "🐉", text: "Dragon flying over mountains at sunset" },
-    { icon: "☕", text: "Cozy coffee shop on a rainy day" },
-    { icon: "🤖", text: "Robot painting in an art studio" },
-  ],
-  code: [
-    { icon: "⚛️", text: "Build a beautiful counter app in React" },
-    { icon: "🎨", text: "Create an animated landing page in HTML" },
-    { icon: "✅", text: "Build a polished todo list app in React" },
-    { icon: "📊", text: "Create a pricing cards component in React" },
-    { icon: "🎮", text: "Build a tic-tac-toe game in React" },
-    { icon: "🗄️", text: "Database schema for an e-commerce app" },
-  ],
-  search: [
-    { icon: "🔍", text: "Latest AI news today" },
-    { icon: "📈", text: "Best programming languages 2025" },
-    { icon: "🌍", text: "Climate change solutions" },
-    { icon: "💻", text: "Next.js vs Remix comparison" },
-    { icon: "🏥", text: "Benefits of meditation" },
-    { icon: "🚀", text: "SpaceX latest missions" },
-  ],
-  audio: [
-    { icon: "🎙️", text: "Welcome to SomaLabs, the unified AI studio." },
-    { icon: "📖", text: "Once upon a time, in a city powered by AI..." },
-    { icon: "💬", text: "Thank you for using our app. Your feedback matters." },
-    { icon: "📰", text: "Breaking news: AI just changed everything." },
-    { icon: "🧘", text: "Take a deep breath. You are capable of amazing things." },
-    { icon: "🎬", text: "In a world where machines learned to speak..." },
-  ],
-  video: [
-    { icon: "🌊", text: "Waves crashing on a tropical beach at sunset" },
-    { icon: "🚗", text: "A sports car driving through a neon-lit city street" },
-    { icon: "🔥", text: "A campfire crackling under a starry night sky" },
-    { icon: "🐦", text: "A hummingbird flying around colorful flowers" },
-    { icon: "☁️", text: "Clouds drifting over snow-capped mountains" },
-    { icon: "🌧️", text: "Rain falling on a window with city lights blurred behind" },
-  ],
+const modePlaceholders: Record<Mode, string> = {
+  chat: "What do you want to know?",
+  image: "Describe an image to generate...",
+  code: "Describe what code you need...",
+  search: "Search the web with AI...",
+  audio: "Type text to convert into speech...",
+  video: "Describe a short video to generate...",
 }
 
 const systemPrompts: Record<string, string> = {
   chat: "You are a helpful AI assistant. Format your responses using markdown — use **bold** for emphasis, `code` for inline code, code blocks for longer code, and bullet points for lists.",
-  code: `You are an elite frontend engineer who builds beautiful, production-grade UI components, similar to what top design agencies ship.
-
+  code: `You are an elite frontend engineer who builds beautiful, production-grade UI components.
 CRITICAL RULES FOR REACT/JSX CODE:
-- Always start with: import { useState } from "react"  (NOT React.useState)
-- Use modern hooks syntax: const [x, setX] = useState(initial)
+- Always start with: import { useState } from "react"
 - Always end with: export default function App() { ... }
-- Use Tailwind CSS classes for ALL styling — make it look premium and polished, not bare-bones
-- Add hover states, transitions, shadows, rounded corners, proper spacing, and a cohesive color palette
-- Include icons where relevant using simple SVGs or emoji if no icon library is available
-- Make layouts responsive and visually balanced — never just plain unstyled divs
-- Think like a senior designer: use whitespace, hierarchy, and polish
-- For lists/cards, add subtle borders, backgrounds, and spacing between items
-- Always include realistic placeholder content, not just "Item 1, Item 2"
-
+- Use Tailwind CSS classes for ALL styling
+- Write COMPLETE, working code — never truncate
 CRITICAL RULES FOR HTML CODE:
-- Write complete \`\`\`html with inline <style> using modern CSS (flexbox/grid, gradients, shadows, transitions)
-- Make it look like a real polished webpage, not a bare template
-
+- Write complete html with inline <style>
 GENERAL RULES:
-- Always use markdown code blocks with correct language identifier (\`\`\`jsx, \`\`\`html, \`\`\`python, etc.)
-- Write COMPLETE, working code — never truncate or use "// rest of code here"
-- Include proper error handling, edge cases, and clean logic
-- Add comments only for genuinely complex logic, not obvious lines
-- After the code, briefly explain key features and how to use it
-- Follow modern best practices for the requested language/framework`,
-  search: "You are a knowledgeable AI assistant. Answer questions accurately using markdown formatting. Use **bold** for key terms and bullet points for multiple items."
+- Always use markdown code blocks with correct language identifier
+- After the code, briefly explain key features`,
+  search: "You are a knowledgeable AI assistant. Answer questions accurately using markdown formatting.",
 }
 
 function CodeBlock({ language, code }: { language: string; code: string }) {
@@ -147,23 +88,27 @@ function CodeBlock({ language, code }: { language: string; code: string }) {
     setTimeout(() => setCopied(false), 2000)
   }
 
-  const previewableLanguages = ["jsx", "js", "javascript", "html", "react", "tsx", "typescript"]
-  const canPreview = previewableLanguages.includes(language.toLowerCase())
+  const previewableLangs = ["jsx", "js", "javascript", "html", "react", "tsx", "typescript"]
+  const canPreview = previewableLangs.includes(language.toLowerCase())
 
   return (
     <>
-      <div className="my-3 rounded-xl overflow-hidden border border-white/10">
-        <div className="flex items-center justify-between px-4 py-1.5
-        bg-white/5 border-b border-white/10">
-          <span className="text-xs text-white/40 font-mono">
+      <div className="my-3 rounded-xl overflow-hidden" style={{ border: "1px solid #000000" }}>
+        <div
+          className="flex items-center justify-between px-4 py-1.5"
+          style={{ background: "#000000", borderBottom: "1px solid #2A2A2A" }}
+        >
+          <span className="text-xs font-mono" style={{ color: "#6B6B6B" }}>
             {language || "code"}
           </span>
           <div className="flex items-center gap-3">
             {canPreview && (
               <button
                 onClick={() => setShowPreview(true)}
-                className="flex items-center gap-1.5 text-xs
-                text-purple-400/70 hover:text-purple-400 transition-colors"
+                className="flex items-center gap-1.5 text-xs transition-colors"
+                style={{ color: "#6B6B6B" }}
+                onMouseEnter={(e) => (e.currentTarget.style.color = "#A3A3A3")}
+                onMouseLeave={(e) => (e.currentTarget.style.color = "#6B6B6B")}
               >
                 <Play size={11} />
                 Preview
@@ -171,35 +116,24 @@ function CodeBlock({ language, code }: { language: string; code: string }) {
             )}
             <button
               onClick={handleCopy}
-              className="flex items-center gap-1.5 text-xs
-              text-white/40 hover:text-white transition-colors"
+              className="flex items-center gap-1.5 text-xs transition-colors"
+              style={{ color: "#6B6B6B" }}
+              onMouseEnter={(e) => (e.currentTarget.style.color = "#A3A3A3")}
+              onMouseLeave={(e) => (e.currentTarget.style.color = "#6B6B6B")}
             >
-              {copied ? (
-                <>
-                  <Check size={11} />
-                  Copied
-                </>
-              ) : (
-                <>
-                  <Copy size={11} />
-                  Copy
-                </>
-              )}
+              {copied ? <><Check size={11} />Copied</> : <><Copy size={11} />Copy</>}
             </button>
           </div>
         </div>
-        <pre className="bg-black/50 p-4 overflow-auto
-        text-xs text-green-400/90 font-mono leading-relaxed">
+        <pre
+          className="p-4 overflow-auto text-xs font-mono leading-relaxed"
+          style={{ background: "#090909", color: "#4ADE80" }}
+        >
           <code>{code}</code>
         </pre>
       </div>
-
       {showPreview && (
-        <CodePreview
-          code={code}
-          language={language}
-          onClose={() => setShowPreview(false)}
-        />
+        <CodePreview code={code} language={language} onClose={() => setShowPreview(false)} />
       )}
     </>
   )
@@ -210,13 +144,13 @@ export default function DashboardPage() {
   const [input, setInput] = useState("")
   const [messages, setMessages] = useState<Message[]>([])
   const [loading, setLoading] = useState(false)
+  const [imageLoading, setImageLoading] = useState(false)
   const [hasStarted, setHasStarted] = useState(false)
   const [conversationId, setConversationId] = useState<string | null>(null)
-  const [imageLoading, setImageLoading] = useState(false)
-  const [videoLoading, setVideoLoading] = useState(false)
-  const [videoAspect, setVideoAspect] = useState<"16:9" | "9:16">("16:9")
+  const [showModeDropdown, setShowModeDropdown] = useState(false)
+  const [videoAspect] = useState<"16:9" | "9:16">("16:9")
 
-  // Web Speech API state — entirely client-side, no backend involved
+  // Web Speech API for audio
   const [voices, setVoices] = useState<SpeechSynthesisVoice[]>([])
   const [audioVoice, setAudioVoice] = useState<string>("")
   const [speakingIndex, setSpeakingIndex] = useState<number | null>(null)
@@ -224,16 +158,14 @@ export default function DashboardPage() {
 
   const bottomRef = useRef<HTMLDivElement>(null)
   const textareaRef = useRef<HTMLTextAreaElement>(null)
+  const dropdownRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: "smooth" })
   }, [messages])
 
-  // Load available system voices. Most browsers populate this list
-  // asynchronously, so we listen for the voiceschanged event too.
   useEffect(() => {
     if (typeof window === "undefined" || !window.speechSynthesis) return
-
     function loadVoices() {
       const available = window.speechSynthesis.getVoices()
       if (available.length > 0) {
@@ -241,62 +173,51 @@ export default function DashboardPage() {
         setAudioVoice((prev) => prev || available[0].voiceURI)
       }
     }
-
     loadVoices()
     window.speechSynthesis.onvoiceschanged = loadVoices
-
     return () => {
-      if (window.speechSynthesis) {
-        window.speechSynthesis.onvoiceschanged = null
-      }
+      if (window.speechSynthesis) window.speechSynthesis.onvoiceschanged = null
     }
   }, [])
 
-  const currentMode = modes.find(m => m.value === activeMode)!
+  useEffect(() => {
+    function handleClickOutside(e: MouseEvent) {
+      if (dropdownRef.current && !dropdownRef.current.contains(e.target as Node)) {
+        setShowModeDropdown(false)
+      }
+    }
+    document.addEventListener("mousedown", handleClickOutside)
+    return () => document.removeEventListener("mousedown", handleClickOutside)
+  }, [])
+
+  const currentMode = modeOptions.find((m) => m.value === activeMode)!
 
   function speakMessage(index: number, text: string) {
     if (typeof window === "undefined" || !window.speechSynthesis) return
-
-    // Clicking the currently-speaking message toggles pause/resume
     if (speakingIndex === index) {
-      if (isPaused) {
-        window.speechSynthesis.resume()
-        setIsPaused(false)
-      } else {
-        window.speechSynthesis.pause()
-        setIsPaused(true)
-      }
+      if (isPaused) { window.speechSynthesis.resume(); setIsPaused(false) }
+      else { window.speechSynthesis.pause(); setIsPaused(true) }
       return
     }
-
-    // Switching to a different message — stop whatever's playing and start fresh
     window.speechSynthesis.cancel()
-
     const utterance = new SpeechSynthesisUtterance(text)
-    const selectedVoice = voices.find((v) => v.voiceURI === audioVoice)
-    if (selectedVoice) utterance.voice = selectedVoice
-
+    const v = voices.find((v) => v.voiceURI === audioVoice)
+    if (v) utterance.voice = v
     utterance.onend = () => setSpeakingIndex(null)
     utterance.onerror = () => setSpeakingIndex(null)
-
     setSpeakingIndex(index)
     setIsPaused(false)
     window.speechSynthesis.speak(utterance)
   }
 
   function stopSpeaking() {
-    if (typeof window !== "undefined" && window.speechSynthesis) {
+    if (typeof window !== "undefined" && window.speechSynthesis)
       window.speechSynthesis.cancel()
-    }
     setSpeakingIndex(null)
     setIsPaused(false)
   }
 
-  async function saveConversation(
-    userInput: string,
-    assistantContent: string,
-    assistantMetadata?: Record<string, any>
-  ) {
+  async function saveConversation(userInput: string, assistantContent: string, assistantMetadata?: Record<string, any>) {
     try {
       const res = await fetch("/api/ai/conversations", {
         method: "POST",
@@ -307,24 +228,18 @@ export default function DashboardPage() {
           mode: activeMode,
           messages: [
             { role: "user", content: userInput },
-            { role: "assistant", content: assistantContent, metadata: assistantMetadata ?? null }
-          ]
-        })
+            { role: "assistant", content: assistantContent, metadata: assistantMetadata ?? null },
+          ],
+        }),
       })
       const data = await res.json()
-      if (data.id) {
-        setConversationId(data.id)
-      }
+      if (data.id) setConversationId(data.id)
     } catch (err) {
       console.error("Failed to save conversation:", err)
     }
   }
 
-  async function saveFollowUpMessages(
-    userInput: string,
-    assistantContent: string,
-    assistantMetadata?: Record<string, any>
-  ) {
+  async function saveFollowUpMessages(userInput: string, assistantContent: string, assistantMetadata?: Record<string, any>) {
     if (!conversationId) return
     try {
       await fetch("/api/ai/conversations/messages", {
@@ -334,9 +249,9 @@ export default function DashboardPage() {
           conversationId,
           messages: [
             { role: "user", content: userInput },
-            { role: "assistant", content: assistantContent, metadata: assistantMetadata ?? null }
-          ]
-        })
+            { role: "assistant", content: assistantContent, metadata: assistantMetadata ?? null },
+          ],
+        }),
       })
     } catch (err) {
       console.error("Failed to save follow-up messages:", err)
@@ -352,189 +267,103 @@ export default function DashboardPage() {
     setHasStarted(true)
     setLoading(true)
 
-    if (textareaRef.current) {
-      textareaRef.current.style.height = "auto"
-    }
+    if (textareaRef.current) textareaRef.current.style.height = "auto"
 
-    setMessages(prev => [...prev, {
-      role: "user",
-      content: userInput,
-      type: "text"
-    }])
+    setMessages((prev) => [...prev, { role: "user", content: userInput, type: "text" }])
 
     try {
       if (activeMode === "image") {
         setImageLoading(true)
-
-        const response = await fetch("/api/ai/image", {
+        const res = await fetch("/api/ai/image", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
             prompt: `${userInput}, highly detailed, 4k quality`,
             width: "1024",
-            height: "1024"
-          })
+            height: "1024",
+          }),
         })
-
-        const data = await response.json()
+        const data = await res.json()
         setImageLoading(false)
-
         if (data.success && data.imageUrl) {
-          setMessages(prev => [...prev, {
-            role: "assistant",
-            content: userInput,
-            type: "image",
-            imageUrl: data.imageUrl
-          }])
-
-          if (isFirstMessage) {
-            await saveConversation(userInput, userInput, { imageUrl: data.imageUrl })
-          } else {
-            await saveFollowUpMessages(userInput, userInput, { imageUrl: data.imageUrl })
-          }
+          setMessages((prev) => [...prev, { role: "assistant", content: userInput, type: "image", imageUrl: data.imageUrl }])
+          if (isFirstMessage) await saveConversation(userInput, userInput, { imageUrl: data.imageUrl })
+          else await saveFollowUpMessages(userInput, userInput, { imageUrl: data.imageUrl })
         } else {
-          setMessages(prev => [...prev, {
-            role: "assistant",
-            content: "Failed to generate image. Please try again.",
-            type: "text"
-          }])
+          setMessages((prev) => [...prev, { role: "assistant", content: "Failed to generate image. Please try again.", type: "text" }])
         }
-
       } else if (activeMode === "search") {
-        const response = await fetch("/api/ai/search", {
+        const res = await fetch("/api/ai/search", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ query: userInput })
+          body: JSON.stringify({ query: userInput }),
         })
-
-        const data = await response.json()
-        const assistantContent = data.answer || "Sorry, I couldn't find an answer for that."
-
-        setMessages(prev => [...prev, {
-          role: "assistant",
-          content: assistantContent,
-          type: "text",
-          sources: data.sources
-        }])
-
-        if (isFirstMessage) {
-          await saveConversation(userInput, assistantContent)
-        } else {
-          await saveFollowUpMessages(userInput, assistantContent)
-        }
-
+        const data = await res.json()
+        const content = data.answer || "Sorry, I couldn't find an answer."
+        setMessages((prev) => [...prev, { role: "assistant", content, type: "text", sources: data.sources }])
+        if (isFirstMessage) await saveConversation(userInput, content)
+        else await saveFollowUpMessages(userInput, content)
       } else if (activeMode === "audio") {
-        // No network call — the text itself is the "result". Speaking
-        // happens on demand when the user presses Play on the bubble.
-        setMessages(prev => [...prev, {
-          role: "assistant",
-          content: userInput,
-          type: "audio"
-        }])
-
-        if (isFirstMessage) {
-          await saveConversation(userInput, userInput)
-        } else {
-          await saveFollowUpMessages(userInput, userInput)
-        }
-
+        setMessages((prev) => [...prev, { role: "assistant", content: userInput, type: "audio" }])
+        if (isFirstMessage) await saveConversation(userInput, userInput)
+        else await saveFollowUpMessages(userInput, userInput)
       } else if (activeMode === "video") {
-        // No paid video API. Generate a free Pollinations image, then
-        // animate it client-side (pan/zoom) — zero cost, zero risk,
-        // nothing that depends on a third party's paid video tier.
-        setVideoLoading(true)
-
-        const response = await fetch("/api/ai/image", {
+        setImageLoading(true)
+        const res = await fetch("/api/ai/image", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
             prompt: `${userInput}, highly detailed, cinematic, 4k quality`,
             width: videoAspect === "9:16" ? "768" : "1280",
-            height: videoAspect === "9:16" ? "1280" : "768"
-          })
+            height: videoAspect === "9:16" ? "1280" : "768",
+          }),
         })
-
-        const data = await response.json()
-        setVideoLoading(false)
-
+        const data = await res.json()
+        setImageLoading(false)
         if (data.success && data.imageUrl) {
-          setMessages(prev => [...prev, {
-            role: "assistant",
-            content: userInput,
-            type: "video",
-            imageUrl: data.imageUrl
-          }])
+          setMessages((prev) => [...prev, { role: "assistant", content: userInput, type: "video", imageUrl: data.imageUrl }])
         } else {
-          setMessages(prev => [...prev, {
-            role: "assistant",
-            content: "Failed to generate video. Please try again.",
-            type: "text"
-          }])
+          setMessages((prev) => [...prev, { role: "assistant", content: "Failed to generate video frame. Please try again.", type: "text" }])
         }
-
       } else {
-        const response = await fetch("/api/ai/chat", {
+        const res = await fetch("/api/ai/chat", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
             messages: [
-              {
-                role: "system",
-                content: systemPrompts[activeMode] ?? systemPrompts.chat
-              },
-              ...messages.map(m => ({
-                role: m.role,
-                content: m.content
-              })),
-              { role: "user", content: userInput }
+              { role: "system", content: systemPrompts[activeMode] ?? systemPrompts.chat },
+              ...messages.map((m) => ({ role: m.role, content: m.content })),
+              { role: "user", content: userInput },
             ],
             provider: "groq",
             model: "llama-3.3-70b-versatile",
-            maxTokens: activeMode === "code" ? 4096 : 1024
-          })
+            maxTokens: activeMode === "code" ? 4096 : 1024,
+          }),
         })
-
-        const data = await response.json()
-        const assistantContent = data.content || "Sorry I couldn't get a response."
-
-        setMessages(prev => [...prev, {
-          role: "assistant",
-          content: assistantContent,
-          type: "text",
-          provider: data.provider,
-          model: data.model
-        }])
-
-        if (isFirstMessage) {
-          await saveConversation(userInput, assistantContent)
-        } else {
-          await saveFollowUpMessages(userInput, assistantContent)
-        }
+        const data = await res.json()
+        const content = data.content || "Sorry, I couldn't get a response."
+        setMessages((prev) => [...prev, { role: "assistant", content, type: "text", provider: data.provider, model: data.model }])
+        if (isFirstMessage) await saveConversation(userInput, content)
+        else await saveFollowUpMessages(userInput, content)
       }
     } catch (err) {
-      console.error("Error in handleSubmit:", err)
-      setMessages(prev => [...prev, {
-        role: "assistant",
-        content: "Something went wrong. Please try again.",
-        type: "text"
-      }])
+      console.error("Error:", err)
+      setMessages((prev) => [...prev, { role: "assistant", content: "Something went wrong. Please try again.", type: "text" }])
     } finally {
       setLoading(false)
       setImageLoading(false)
-      setVideoLoading(false)
     }
   }
 
-  function handleModeSwitch(mode: Mode) {
+  function handleModeSelect(mode: Mode) {
     stopSpeaking()
     setActiveMode(mode)
     setMessages([])
     setHasStarted(false)
     setInput("")
     setConversationId(null)
-    if (textareaRef.current) {
-      textareaRef.current.style.height = "auto"
-    }
+    setShowModeDropdown(false)
+    if (textareaRef.current) textareaRef.current.style.height = "auto"
   }
 
   function startNew() {
@@ -544,119 +373,217 @@ export default function DashboardPage() {
     setInput("")
     setConversationId(null)
     setActiveMode("chat")
-    if (textareaRef.current) {
-      textareaRef.current.style.height = "auto"
-    }
+    if (textareaRef.current) textareaRef.current.style.height = "auto"
   }
 
   return (
-    <div className="flex flex-col h-full relative">
-      <style>{`
-        @keyframes kenburns {
-          0% { transform: scale(1) translate(0, 0); }
-          100% { transform: scale(1.15) translate(-2%, -2%); }
-        }
-        .animate-kenburns {
-          animation: kenburns 8s ease-in-out infinite alternate;
-        }
-      `}</style>
+    <div className="flex flex-col h-full relative" style={{ background: "#000000" }}>
+
+      {/* Top-right controls */}
+      <div className="absolute top-4 right-4 flex items-center gap-2 z-10">
+        <button
+          className="w-9 h-9 rounded-full flex items-center justify-center
+          transition-colors duration-150"
+          style={{ background: "#000000" }}
+          onMouseEnter={(e) => (e.currentTarget.style.background = "#1A1A1A")}
+          onMouseLeave={(e) => (e.currentTarget.style.background = "#000000")}
+        >
+          <Sun size={15} style={{ color: "#A3A3A3" }} />
+        </button>
+        <div
+          className="w-9 h-9 rounded-full flex items-center justify-center
+          text-sm font-semibold text-white"
+          style={{ background: "#2A2A2A" }}
+        >
+          M
+        </div>
+      </div>
 
       {/* Messages area */}
       <div className="flex-1 overflow-auto">
         {!hasStarted ? (
 
-          /* Landing */
-          <div className="flex flex-col items-center justify-center
-          min-h-full px-4 relative">
+          /* Hero landing */
+          <div className="flex flex-col items-center justify-center min-h-full px-6">
 
-            <div className="absolute top-1/3 left-1/2 -translate-x-1/2
-            -translate-y-1/2 w-96 h-96 rounded-full
-            bg-white/[0.02] blur-3xl pointer-events-none" />
+            {/* Hero image — soma-hero-bg has SOMA wordmark + tagline baked in */}
+            <div className="relative w-full max-w-2xl mb-2">
+              {/* Soft radial glow behind the image */}
+              <div
+                className="absolute inset-0 rounded-3xl pointer-events-none"
+                style={{
+                  background: "radial-gradient(ellipse 80% 60% at 50% 50%, rgba(0, 0, 0, 0.07), transparent 70%)",
+                  filter: "blur(20px)",
+                }}
+              />
+              <Image
+                src="/soma-hero-bg.png"
+                alt="SOMA — AI that evolves with you."
+                width={800}
+                height={420}
+                className="w-full object-contain relative z-10"
+                priority
+              />
+            </div>
 
-            {/* Brand */}
-            <div className="flex flex-col items-center mb-10 relative">
-              <div className="relative w-16 h-16 rounded-2xl overflow-hidden
-              mb-5 shadow-2xl shadow-white/5 border border-white/10">
-                <Image
-                  src="/logo1.png"
-                  alt="SomaLabs"
-                  fill
-                  className="object-cover"
+            {/* Divider */}
+            <div
+              className="w-full max-w-2xl mb-6"
+              style={{ height: "1px", background: "rgba(0, 0, 0, 0.06)" }}
+            />
+
+            {/* Prompt input */}
+            <div className="w-full max-w-2xl">
+              <div
+                className="flex items-center gap-3 px-4 py-3.5 rounded-2xl"
+                style={{
+                  background: "#121212",
+                  border: "1px solid rgba(0, 0, 0, 0.08)",
+                }}
+              >
+                <textarea
+                  ref={textareaRef}
+                  value={input}
+                  onChange={(e) => {
+                    setInput(e.target.value)
+                    e.target.style.height = "auto"
+                    e.target.style.height = `${Math.min(e.target.scrollHeight, 120)}px`
+                  }}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter" && !e.shiftKey) {
+                      e.preventDefault()
+                      handleSubmit()
+                    }
+                  }}
+                  placeholder={modePlaceholders[activeMode]}
+                  rows={1}
+                  className="flex-1 bg-transparent text-sm resize-none focus:outline-none leading-relaxed"
+                  style={{
+                    color: "#ffffff",
+                    caretColor: "#ffffff",
+                    minHeight: "24px",
+                    maxHeight: "120px",
+                  }}
                 />
-            </div>
-              <h1 className="text-5xl font-light tracking-[0.2em]
-              uppercase text-white">
-                SOMA
-              </h1>
-              <p className="text-xs text-white/25 mt-2
-              tracking-[0.4em] uppercase">
-                Unified AI Studio
-              </p>
-            </div>
+                <style>{`
+                  textarea::placeholder { color: #A3A3A3; }
+                `}</style>
 
-            {/* Suggestions */}
-            {suggestions[activeMode].length > 0 && (
-              <div className="w-full max-w-2xl grid grid-cols-3 gap-2 mb-4">
-                {suggestions[activeMode].map((s) => (
+                {/* Mode selector dropdown */}
+                <div className="relative shrink-0" ref={dropdownRef}>
                   <button
-                    key={s.text}
-                    onClick={() => setInput(s.text)}
-                    className="text-left px-4 py-3 rounded-xl
-                    bg-white/[0.03] border border-white/[0.07]
-                    hover:bg-white/[0.06] hover:border-white/15
-                    transition-all duration-200 group"
+                    onClick={() => setShowModeDropdown(!showModeDropdown)}
+                    className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl
+                    text-sm transition-colors duration-150"
+                    style={{
+                      background: "#000000",
+                      color: "#A3A3A3",
+                      border: "1px solid #2A2A2A",
+                    }}
+                    onMouseEnter={(e) => (e.currentTarget.style.color = "#ffffff")}
+                    onMouseLeave={(e) => (e.currentTarget.style.color = "#A3A3A3")}
                   >
-                    <span className="text-base mb-1.5 block">{s.icon}</span>
-                    <span className="text-xs text-white/35
-                    group-hover:text-white/65 transition-colors
-                    line-clamp-2 leading-relaxed">
-                      {s.text}
-                    </span>
+                    <currentMode.icon size={13} />
+                    <span>{currentMode.label}</span>
+                    <ChevronDown size={12} />
                   </button>
-                ))}
+
+                  {showModeDropdown && (
+                    <div
+                      className="absolute bottom-full right-0 mb-2 w-40 rounded-xl
+                      overflow-hidden shadow-2xl z-50"
+                      style={{
+                        background: "#000000",
+                        border: "1px solid #2A2A2A",
+                      }}
+                    >
+                      {modeOptions.map((m) => (
+                        <button
+                          key={m.value}
+                          onClick={() => handleModeSelect(m.value)}
+                          className="flex items-center gap-2.5 w-full px-3.5 py-2.5
+                          text-sm transition-colors duration-100"
+                          style={{
+                            color: activeMode === m.value ? "#ffffff" : "#A3A3A3",
+                            background: activeMode === m.value ? "#000000" : "transparent",
+                          }}
+                          onMouseEnter={(e) => (e.currentTarget.style.background = "#000000")}
+                          onMouseLeave={(e) =>
+                            (e.currentTarget.style.background =
+                              activeMode === m.value ? "#000000" : "transparent")
+                          }
+                        >
+                          <m.icon size={13} />
+                          {m.label}
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                </div>
+
+                {/* Send button */}
+                <button
+                  onClick={handleSubmit}
+                  disabled={!input.trim() || loading}
+                  className="w-8 h-8 rounded-full flex items-center justify-center
+                  shrink-0 transition-all duration-150"
+                  style={{
+                    background: input.trim() && !loading ? "#ffffff" : "#2A2A2A",
+                  }}
+                >
+                  {loading
+                    ? <Loader2 size={14} className="animate-spin" style={{ color: "#6B6B6B" }} />
+                    : <ArrowUp size={14} style={{ color: input.trim() ? "#000000" : "#6B6B6B" }} />
+                  }
+                </button>
               </div>
-            )}
 
-            {activeMode === "code" && (
-              <p className="text-xs text-white/15 mb-4">
-                💡 Tip: Ask for React or HTML code to see a live preview
+              {/* Footer */}
+              <p
+                className="text-center text-xs mt-4"
+                style={{ color: "#6B6B6B" }}
+              >
+                By messaging Soma, you agree to our{" "}
+                <a
+                  href="#"
+                  className="underline transition-colors"
+                  style={{ color: "#A3A3A3" }}
+                  onMouseEnter={(e) => (e.currentTarget.style.color = "#ffffff")}
+                  onMouseLeave={(e) => (e.currentTarget.style.color = "#A3A3A3")}
+                >
+                  Terms
+                </a>{" "}
+                and{" "}
+                <a
+                  href="#"
+                  className="underline transition-colors"
+                  style={{ color: "#A3A3A3" }}
+                  onMouseEnter={(e) => (e.currentTarget.style.color = "#ffffff")}
+                  onMouseLeave={(e) => (e.currentTarget.style.color = "#A3A3A3")}
+                >
+                  Privacy Policy
+                </a>
+                .
               </p>
-            )}
-
-            {activeMode === "audio" && (
-              <p className="text-xs text-white/15 mb-4">
-                🎙️ Free text-to-speech using your browser's built-in voices — no server, no cost
-              </p>
-            )}
-
-            {activeMode === "video" && (
-              <p className="text-xs text-white/15 mb-4">
-                🎬 Pan &amp; zoom preview clips, 100% free · Full AI-generated video coming soon
-              </p>
-            )}
+            </div>
           </div>
 
         ) : (
 
           /* Messages */
-          <div className="max-w-3xl mx-auto px-4 py-8 space-y-6">
+          <div className="max-w-3xl mx-auto px-6 py-8 space-y-6">
             {messages.map((msg, i) => (
               <div
                 key={i}
-                className={`flex gap-3
-                  ${msg.role === "user" ? "justify-end" : "justify-start"}`}
+                className={`flex gap-3 ${msg.role === "user" ? "justify-end" : "justify-start"}`}
               >
                 {msg.role === "assistant" && (
-                  <div className="w-7 h-7 rounded-lg bg-white/8
-                  border border-white/10 flex items-center
-                  justify-center shrink-0 mt-1 overflow-hidden">
-                    <Image
-                      src="/logo1.png"
-                      alt="Soma"
-                      width={16}
-                      height={16}
-                      className="object-cover w-full h-full"
-                    />
+                  <div
+                    className="w-7 h-7 rounded-full flex items-center
+                    justify-center shrink-0 mt-1 overflow-hidden"
+                    style={{ background: "#000000", border: "1px solid #000000" }}
+                  >
+                    <Image src="/logo1.png" alt="Soma" width={16} height={16} className="object-cover w-full h-full" />
                   </div>
                 )}
 
@@ -666,30 +593,29 @@ export default function DashboardPage() {
                       <img
                         src={msg.imageUrl}
                         alt={msg.content}
-                        className="rounded-2xl max-w-sm w-full
-                        border border-white/10 shadow-xl"
+                        className="rounded-2xl max-w-sm w-full shadow-xl"
+                        style={{ border: "1px solid #000000" }}
                         onError={(e) => {
                           setTimeout(() => {
-                            (e.target as HTMLImageElement).src =
-                              msg.imageUrl! + "&retry=" + Date.now()
+                            (e.target as HTMLImageElement).src = msg.imageUrl! + "&retry=" + Date.now()
                           }, 2000)
                         }}
                       />
-                      <div className="absolute bottom-3 left-3 right-3
-                      flex items-center justify-between
-                      opacity-0 group-hover:opacity-100
-                      transition-opacity duration-200">
-                        <span className="text-xs text-white/50 bg-black/50
-                        backdrop-blur-sm px-2 py-1 rounded-lg
-                        truncate max-w-[60%]">
+                      <div
+                        className="absolute bottom-3 left-3 right-3 flex items-center
+                        justify-between opacity-0 group-hover:opacity-100 transition-opacity duration-200"
+                      >
+                        <span
+                          className="text-xs px-2 py-1 rounded-lg truncate max-w-[60%]"
+                          style={{ color: "rgba(255,255,255,0.5)", background: "rgba(0,0,0,0.5)" }}
+                        >
                           {msg.content}
                         </span>
                         <button
                           onClick={() => window.open(msg.imageUrl, "_blank")}
-                          className="flex items-center gap-1.5 px-3 py-1.5
-                          bg-white text-black rounded-lg
-                          text-xs font-medium hover:bg-white/90
-                          transition-colors"
+                          className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg
+                          text-xs font-medium transition-colors"
+                          style={{ background: "#ffffff", color: "#000000" }}
                         >
                           <Download size={11} />
                           Save
@@ -697,27 +623,27 @@ export default function DashboardPage() {
                       </div>
                     </div>
                   ) : msg.type === "video" && msg.imageUrl ? (
-                    <div className="rounded-2xl border border-white/10
-                    bg-white/[0.05] p-3 overflow-hidden">
-                      <div className="rounded-xl overflow-hidden max-w-sm
-                      aspect-video">
+                    <div
+                      className="rounded-2xl p-3 overflow-hidden"
+                      style={{ border: "1px solid #000000", background: "#000000" }}
+                    >
+                      <div className="rounded-xl overflow-hidden aspect-video max-w-sm">
                         <img
                           src={msg.imageUrl}
                           alt={msg.content}
-                          className="w-full h-full object-cover animate-kenburns"
+                          className="w-full h-full object-cover animate-[kenburns_8s_ease-in-out_infinite_alternate]"
                         />
                       </div>
                       <div className="flex items-center justify-between mt-2">
-                        <span className="text-xs text-white/30 truncate max-w-[65%]">
+                        <span className="text-xs truncate max-w-[65%]" style={{ color: "#6B6B6B" }}>
                           {msg.content}
                         </span>
                         <a
                           href={msg.imageUrl}
                           download="soma-frame.jpg"
-                          className="flex items-center gap-1.5 px-2.5 py-1
-                          bg-white text-black rounded-lg
-                          text-xs font-medium hover:bg-white/90
-                          transition-colors"
+                          className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg
+                          text-xs font-medium transition-colors"
+                          style={{ background: "#ffffff", color: "#000000" }}
                         >
                           <Download size={11} />
                           Save frame
@@ -725,117 +651,79 @@ export default function DashboardPage() {
                       </div>
                     </div>
                   ) : msg.type === "audio" ? (
-                    <div className="rounded-2xl border border-white/10
-                    bg-white/[0.05] p-4">
+                    <div
+                      className="rounded-2xl p-4"
+                      style={{ border: "1px solid #000000", background: "#000000" }}
+                    >
                       <div className="flex items-center gap-3">
                         <button
                           onClick={() => speakMessage(i, msg.content)}
-                          className="w-9 h-9 rounded-full bg-white text-black
-                          flex items-center justify-center shrink-0
-                          hover:bg-white/90 active:scale-95
-                          transition-all duration-150"
+                          className="w-9 h-9 rounded-full flex items-center justify-center
+                          shrink-0 transition-all duration-150"
+                          style={{ background: "#ffffff" }}
                         >
                           {speakingIndex === i && !isPaused
-                            ? <Pause size={14} />
-                            : <Play size={14} />
+                            ? <Pause size={14} style={{ color: "#000000" }} />
+                            : <Play size={14} style={{ color: "#000000" }} />
                           }
                         </button>
-                        <p className="text-sm text-white/80 leading-relaxed flex-1">
+                        <p className="text-sm flex-1 leading-relaxed" style={{ color: "#A3A3A3" }}>
                           {msg.content}
                         </p>
                         {speakingIndex === i && (
                           <button
                             onClick={stopSpeaking}
-                            className="w-7 h-7 rounded-full bg-white/10
-                            hover:bg-white/15 flex items-center justify-center
+                            className="w-7 h-7 rounded-full flex items-center justify-center
                             shrink-0 transition-colors"
+                            style={{ background: "#000000" }}
                           >
-                            <Square size={10} className="text-white/60" />
+                            <Square size={10} style={{ color: "#6B6B6B" }} />
                           </button>
                         )}
                       </div>
                     </div>
                   ) : (
-                    <div className={`px-4 py-3 rounded-2xl text-sm
-                      leading-relaxed
-                      ${msg.role === "user"
-                        ? "bg-white text-black rounded-tr-sm font-medium"
-                        : "bg-white/[0.05] border border-white/8 text-white rounded-tl-sm"
-                      }`}
+                    <div
+                      className="px-4 py-3 rounded-2xl text-sm leading-relaxed"
+                      style={
+                        msg.role === "user"
+                          ? { background: "#000000", color: "#ffffff", border: "1px solid #000000" }
+                          : { background: "transparent", color: "#ffffff" }
+                      }
                     >
                       {msg.role === "assistant" ? (
                         <ReactMarkdown
                           components={{
-                            h1: ({ children }) => (
-                              <h1 className="text-lg font-bold mb-3 text-white">
-                                {children}
-                              </h1>
-                            ),
-                            h2: ({ children }) => (
-                              <h2 className="text-base font-bold mb-2 text-white">
-                                {children}
-                              </h2>
-                            ),
-                            h3: ({ children }) => (
-                              <h3 className="text-sm font-semibold mb-2 text-white/90
-                              mt-3">
-                                {children}
-                              </h3>
-                            ),
-                            p: ({ children }) => (
-                              <p className="mb-3 last:mb-0 text-white/85 leading-relaxed">
-                                {children}
-                              </p>
-                            ),
-                            strong: ({ children }) => (
-                              <strong className="font-semibold text-white">
-                                {children}
-                              </strong>
-                            ),
-                            em: ({ children }) => (
-                              <em className="italic text-white/75">
-                                {children}
-                              </em>
-                            ),
+                            h1: ({ children }) => <h1 className="text-lg font-bold mb-3 text-white">{children}</h1>,
+                            h2: ({ children }) => <h2 className="text-base font-bold mb-2 text-white">{children}</h2>,
+                            h3: ({ children }) => <h3 className="text-sm font-semibold mb-2 mt-3" style={{ color: "#A3A3A3" }}>{children}</h3>,
+                            p: ({ children }) => <p className="mb-3 last:mb-0 leading-relaxed" style={{ color: "#A3A3A3" }}>{children}</p>,
+                            strong: ({ children }) => <strong className="font-semibold text-white">{children}</strong>,
+                            em: ({ children }) => <em className="italic" style={{ color: "#6B6B6B" }}>{children}</em>,
                             code: ({ children, className }) => {
                               const isBlock = className?.includes("language-")
                               const lang = className?.replace("language-", "") ?? ""
-
                               if (isBlock) {
-                                const codeString = String(children).replace(/\n$/, "")
-                                return <CodeBlock language={lang} code={codeString} />
+                                return <CodeBlock language={lang} code={String(children).replace(/\n$/, "")} />
                               }
-
                               return (
-                                <code className="bg-white/10 px-1.5 py-0.5
-                                rounded text-xs font-mono text-green-400/90">
+                                <code
+                                  className="px-1.5 py-0.5 rounded text-xs font-mono"
+                                  style={{ background: "#000000", color: "#4ADE80" }}
+                                >
                                   {children}
                                 </code>
                               )
                             },
-                            ul: ({ children }) => (
-                              <ul className="list-disc list-inside mb-3
-                              space-y-1.5 text-white/80">
-                                {children}
-                              </ul>
-                            ),
-                            ol: ({ children }) => (
-                              <ol className="list-decimal list-inside mb-3
-                              space-y-1.5 text-white/80">
-                                {children}
-                              </ol>
-                            ),
-                            li: ({ children }) => (
-                              <li className="text-white/80 leading-relaxed">
-                                {children}
-                              </li>
-                            ),
-                            hr: () => (
-                              <hr className="border-white/10 my-4" />
-                            ),
+                            ul: ({ children }) => <ul className="list-disc list-inside mb-3 space-y-1.5" style={{ color: "#A3A3A3" }}>{children}</ul>,
+                            ol: ({ children }) => <ol className="list-decimal list-inside mb-3 space-y-1.5" style={{ color: "#A3A3A3" }}>{children}</ol>,
+                            li: ({ children }) => <li className="leading-relaxed">{children}</li>,
+                            hr: () => <hr className="my-4" style={{ borderColor: "#000000" }} />,
                             blockquote: ({ children }) => (
-                              <blockquote className="border-l-2 border-white/20
-                              pl-4 my-3 text-white/55 italic">
+                              <blockquote
+                                className="border-l-2 pl-4 my-3 italic"
+                                style={{ borderColor: "#000000", color: "#6B6B6B" }}
+                              >
                                 {children}
                               </blockquote>
                             ),
@@ -848,8 +736,10 @@ export default function DashboardPage() {
                       )}
 
                       {msg.provider && (
-                        <div className="text-xs mt-2 pt-2
-                        border-t border-white/5 text-white/20">
+                        <div
+                          className="text-xs mt-2 pt-2"
+                          style={{ borderTop: "1px solid #000000", color: "#6B6B6B" }}
+                        >
                           {msg.provider} · {msg.model}
                         </div>
                       )}
@@ -862,69 +752,54 @@ export default function DashboardPage() {
                 </div>
 
                 {msg.role === "user" && (
-                  <div className="w-7 h-7 rounded-lg bg-white/10
-                  flex items-center justify-center shrink-0 mt-1">
-                    <User size={13} className="text-white/70" />
+                  <div
+                    className="w-7 h-7 rounded-full flex items-center
+                    justify-center shrink-0 mt-1 text-xs font-semibold text-white"
+                    style={{ background: "#2A2A2A" }}
+                  >
+                    M
                   </div>
                 )}
               </div>
             ))}
 
-            {(loading || imageLoading || videoLoading) && (
+            {(loading || imageLoading) && (
               <div className="flex gap-3 justify-start">
-                <div className="w-7 h-7 rounded-lg bg-white/8
-                border border-white/10 flex items-center
-                justify-center shrink-0 overflow-hidden">
-                  <Image
-                    src="/logo1.png"
-                    alt="Soma"
-                    width={16}
-                    height={16}
-                    className="object-cover w-full h-full animate-pulse"
-                  />
+                <div
+                  className="w-7 h-7 rounded-full flex items-center
+                  justify-center shrink-0 overflow-hidden"
+                  style={{ background: "#000000", border: "1px solid #000000" }}
+                >
+                  <Image src="/logo1.png" alt="Soma" width={16} height={16} className="object-cover w-full h-full animate-pulse" />
                 </div>
-                <div className="bg-white/[0.05] border border-white/8
-                rounded-2xl rounded-tl-sm px-4 py-3">
+                <div
+                  className="px-4 py-3 rounded-2xl"
+                  style={{ background: "#121212", border: "1px solid #000000" }}
+                >
                   {imageLoading ? (
                     <div className="flex items-center gap-2">
-                      <Loader2 size={14} className="animate-spin
-                      text-purple-400" />
-                      <span className="text-xs text-white/40">
-                        Generating image...
-                      </span>
-                    </div>
-                  ) : videoLoading ? (
-                    <div className="flex items-center gap-2">
-                      <Loader2 size={14} className="animate-spin
-                      text-orange-400" />
-                      <span className="text-xs text-white/40">
-                        Generating video frame...
+                      <Loader2 size={14} className="animate-spin" style={{ color: "#6B6B6B" }} />
+                      <span className="text-xs" style={{ color: "#6B6B6B" }}>
+                        {activeMode === "video" ? "Generating video frame..." : "Generating image..."}
                       </span>
                     </div>
                   ) : activeMode === "code" ? (
                     <div className="flex items-center gap-2">
-                      <Loader2 size={14} className="animate-spin
-                      text-green-400" />
-                      <span className="text-xs text-white/40">
-                        Writing code...
-                      </span>
+                      <Loader2 size={14} className="animate-spin" style={{ color: "#4ADE80" }} />
+                      <span className="text-xs" style={{ color: "#6B6B6B" }}>Writing code...</span>
                     </div>
                   ) : activeMode === "search" ? (
                     <div className="flex items-center gap-2">
-                      <Loader2 size={14} className="animate-spin
-                      text-blue-400" />
-                      <span className="text-xs text-white/40">
-                        Searching the web...
-                      </span>
+                      <Loader2 size={14} className="animate-spin" style={{ color: "#60A5FA" }} />
+                      <span className="text-xs" style={{ color: "#6B6B6B" }}>Searching the web...</span>
                     </div>
                   ) : (
                     <div className="flex gap-1.5 items-center">
                       {[0, 150, 300].map((d) => (
                         <div
                           key={d}
-                          className="w-1.5 h-1.5 rounded-full
-                          bg-white/40 animate-bounce"
-                          style={{ animationDelay: `${d}ms` }}
+                          className="w-1.5 h-1.5 rounded-full animate-bounce"
+                          style={{ background: "#6B6B6B", animationDelay: `${d}ms` }}
                         />
                       ))}
                     </div>
@@ -938,137 +813,109 @@ export default function DashboardPage() {
         )}
       </div>
 
-      {/* Input */}
-      <div className="shrink-0 px-4 pb-4 max-w-3xl mx-auto w-full">
-
-        {activeMode === "audio" && voices.length > 0 && (
-          <div className="flex items-center gap-2 mb-2 px-1">
-            <span className="text-xs text-white/25">Voice</span>
-            <select
-              value={audioVoice}
-              onChange={(e) => setAudioVoice(e.target.value)}
-              className="bg-white/[0.03] border border-white/[0.07] rounded-lg
-              px-2 py-1.5 text-xs text-white/60 focus:outline-none
-              focus:border-white/20 max-w-[220px]"
-            >
-              {voices.map((v) => (
-                <option key={v.voiceURI} value={v.voiceURI} className="bg-[#0c0c0c]">
-                  {v.name} ({v.lang})
-                </option>
-              ))}
-            </select>
-          </div>
-        )}
-
-        {activeMode === "video" && (
-          <div className="flex items-center gap-3 mb-2 px-1">
-            <div className="flex items-center gap-1.5">
-              <span className="text-xs text-white/25">Aspect</span>
-              <select
-                value={videoAspect}
-                onChange={(e) => setVideoAspect(e.target.value as "16:9" | "9:16")}
-                className="bg-white/[0.03] border border-white/[0.07] rounded-lg
-                px-2 py-1.5 text-xs text-white/60 focus:outline-none
-                focus:border-white/20"
-              >
-                <option value="16:9" className="bg-[#0c0c0c]">16:9 Landscape</option>
-                <option value="9:16" className="bg-[#0c0c0c]">9:16 Portrait</option>
-              </select>
-            </div>
-          </div>
-        )}
-
-        <div className="relative bg-white/[0.04] border border-white/10
-        rounded-2xl hover:border-white/15 focus-within:border-white/20
-        transition-all duration-300 shadow-xl shadow-black/20">
-
-          <textarea
-            ref={textareaRef}
-            value={input}
-            onChange={(e) => {
-              setInput(e.target.value)
-              e.target.style.height = "auto"
-              e.target.style.height =
-                `${Math.min(e.target.scrollHeight, 120)}px`
+      {/* Persistent input bar (shown when chat has started) */}
+      {hasStarted && (
+        <div className="shrink-0 px-6 pb-4 max-w-3xl mx-auto w-full">
+          <div
+            className="flex items-center gap-3 px-4 py-3.5 rounded-2xl"
+            style={{
+              background: "#121212",
+              border: "1px solid rgba(255,255,255,0.08)",
             }}
-            onKeyDown={(e) => {
-              if (e.key === "Enter" && !e.shiftKey) {
-                e.preventDefault()
-                handleSubmit()
-              }
-            }}
-            placeholder={currentMode.placeholder}
-            rows={1}
-            className="w-full bg-transparent text-white
-            placeholder:text-white/20 text-sm resize-none
-            focus:outline-none leading-relaxed
-            px-4 pt-4 pb-2 pr-14
-            min-h-[52px] max-h-[120px]"
-          />
-
-          <div className="flex items-center gap-0.5 px-3 pb-3 pt-1">
-            {modes.map((mode) => (
-              <button
-                key={mode.value}
-                onClick={() => handleModeSwitch(mode.value)}
-                className={`flex items-center gap-1.5 px-2.5 py-1.5
-                rounded-lg text-xs font-medium transition-all duration-200
-                ${activeMode === mode.value
-                  ? "bg-white/12 text-white"
-                  : "text-white/25 hover:text-white/50 hover:bg-white/5"
-                }`}
-              >
-                <mode.icon size={11} />
-                {mode.label}
-              </button>
-            ))}
-          </div>
-
-          <button
-            onClick={handleSubmit}
-            disabled={!input.trim() || loading}
-            className="absolute right-3 top-3
-            w-8 h-8 rounded-lg bg-white text-black
-            flex items-center justify-center
-            hover:bg-white/90 active:scale-95
-            transition-all duration-200
-            disabled:opacity-20 disabled:cursor-not-allowed"
           >
-            {loading
-              ? <Loader2 size={14} className="animate-spin" />
-              : <ArrowRight size={14} />
-            }
-          </button>
-        </div>
+            <textarea
+              ref={textareaRef}
+              value={input}
+              onChange={(e) => {
+                setInput(e.target.value)
+                e.target.style.height = "auto"
+                e.target.style.height = `${Math.min(e.target.scrollHeight, 120)}px`
+              }}
+              onKeyDown={(e) => {
+                if (e.key === "Enter" && !e.shiftKey) {
+                  e.preventDefault()
+                  handleSubmit()
+                }
+              }}
+              placeholder={modePlaceholders[activeMode]}
+              rows={1}
+              className="flex-1 bg-transparent text-sm resize-none focus:outline-none leading-relaxed"
+              style={{ color: "#ffffff", caretColor: "#ffffff", minHeight: "24px", maxHeight: "120px" }}
+            />
 
-        <div className="flex items-center justify-center mt-2 gap-3">
-          {hasStarted && (
-            <>
+            <div className="relative shrink-0" ref={dropdownRef}>
               <button
-                onClick={startNew}
-                className="text-xs text-white/20 hover:text-white/45
-                transition-colors flex items-center gap-1"
+                onClick={() => setShowModeDropdown(!showModeDropdown)}
+                className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-sm
+                transition-colors duration-150"
+                style={{ background: "#121212", color: "#A3A3A3", border: "1px solid #2A2A2A" }}
               >
-                <RefreshCw size={10} />
-                New conversation
+                <currentMode.icon size={13} />
+                <span>{currentMode.label}</span>
+                <ChevronDown size={12} />
               </button>
-              <span className="text-white/10 text-xs">·</span>
-            </>
-          )}
-          <p className="text-xs text-white/15">
-            {activeMode === "image"
-              ? "Powered by Pollinations AI · Free"
-              : activeMode === "search"
-              ? "Powered by Groq + Tavily · Live Web Search"
-              : activeMode === "audio"
-              ? "Powered by your browser · Free forever"
-              : activeMode === "video"
-              ? "Powered by Pollinations AI · Preview mode · Free"
-              : "Powered by Groq · Llama 3.3 70B"
-            }
-          </p>
+
+              {showModeDropdown && (
+                <div
+                  className="absolute bottom-full right-0 mb-2 w-40 rounded-xl overflow-hidden shadow-2xl z-50"
+                  style={{ background: "#121212", border: "1px solid #2A2A2A" }}
+                >
+                  {modeOptions.map((m) => (
+                    <button
+                      key={m.value}
+                      onClick={() => handleModeSelect(m.value)}
+                      className="flex items-center gap-2.5 w-full px-3.5 py-2.5 text-sm transition-colors duration-100"
+                      style={{
+                        color: activeMode === m.value ? "#ffffff" : "#A3A3A3",
+                        background: activeMode === m.value ? "#1A1A1A" : "transparent",
+                      }}
+                      onMouseEnter={(e) => (e.currentTarget.style.background = "#1A1A1A")}
+                      onMouseLeave={(e) =>
+                        (e.currentTarget.style.background = activeMode === m.value ? "#1A1A1A" : "transparent")
+                      }
+                    >
+                      <m.icon size={13} />
+                      {m.label}
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            <button
+              onClick={handleSubmit}
+              disabled={!input.trim() || loading}
+              className="w-8 h-8 rounded-full flex items-center justify-center shrink-0 transition-all duration-150"
+              style={{ background: input.trim() && !loading ? "#ffffff" : "#2A2A2A" }}
+            >
+              {loading
+                ? <Loader2 size={14} className="animate-spin" style={{ color: "#6B6B6B" }} />
+                : <ArrowUp size={14} style={{ color: input.trim() ? "#000000" : "#6B6B6B" }} />
+              }
+            </button>
+          </div>
+
+          <div className="flex items-center justify-center mt-2 gap-3">
+            <button
+              onClick={startNew}
+              className="text-xs flex items-center gap-1 transition-colors"
+              style={{ color: "#6B6B6B" }}
+              onMouseEnter={(e) => (e.currentTarget.style.color = "#A3A3A3")}
+              onMouseLeave={(e) => (e.currentTarget.style.color = "#6B6B6B")}
+            >
+              <RefreshCw size={10} />
+              New conversation
+            </button>
+          </div>
         </div>
-      </div>
+      )}
+
+      <style>{`
+        @keyframes kenburns {
+          0% { transform: scale(1) translate(0, 0); }
+          100% { transform: scale(1.15) translate(-2%, -2%); }
+        }
+      `}</style>
     </div>
   )
 }
