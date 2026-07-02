@@ -160,7 +160,7 @@ export default function SidebarClient({
           rounded-xl transition-all duration-150"
           style={{ background: "transparent" }}
           onMouseEnter={(e) =>
-            (e.currentTarget.style.background = "#1A1A1A")
+            (e.currentTarget.style.background = "#000000")
           }
           onMouseLeave={(e) =>
             (e.currentTarget.style.background = "transparent")
@@ -219,7 +219,7 @@ export default function SidebarClient({
                   text-xs"
                   style={{
                     background: isActive ? "#1A1A1A" : "transparent",
-                    color: isActive ? "#ffffff" : "#A3A3A3",
+                    color: isActive ? "#ffffff" : "#a3a3a3",
                   }}
                   onMouseEnter={(e) => {
                     if (!isActive)
