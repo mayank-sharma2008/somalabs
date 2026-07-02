@@ -579,7 +579,7 @@ export default function DashboardPage() {
                       <div className="flex items-center gap-2">
                         <div
                           className="w-5 h-5 rounded-full overflow-hidden shrink-0"
-                          style={{ border: "1px solid #000000" }}
+                          style={{ border: "1px solid #0A0A0A" }}
                         >
                           <Image
                             src="/logo1.png"
@@ -593,7 +593,7 @@ export default function DashboardPage() {
                           className="text-xs font-medium"
                           style={{ color: "#6B6B6B" }}
                         >
-                          Soma
+                          Thoughts...
                         </span>
                       </div>
 
@@ -605,7 +605,7 @@ export default function DashboardPage() {
                               src={msg.imageUrl}
                               alt={msg.content}
                               className="rounded-2xl max-w-sm w-full"
-                              style={{ border: "1px solid #000000" }}
+                              style={{ border: "1px solid #0A0A0A" }}
                               onError={(e) => {
                                 setTimeout(() => {
                                   (e.target as HTMLImageElement).src =
@@ -645,7 +645,7 @@ export default function DashboardPage() {
                         ) : msg.type === "video" && msg.imageUrl ? (
                           <div
                             className="rounded-2xl overflow-hidden max-w-sm"
-                            style={{ border: "1px solid #000000" }}
+                            style={{ border: "1px solid #0A0A0A" }}
                           >
                             <div className="aspect-video overflow-hidden">
                               <img
@@ -659,7 +659,7 @@ export default function DashboardPage() {
                             </div>
                             <div
                               className="flex items-center justify-between px-3 py-2.5"
-                              style={{ background: "#0D0D0D", borderTop: "1px solid #000000" }}
+                              style={{ background: "#0D0D0D", borderTop: "1px solid #0A0A0A" }}
                             >
                               <span className="text-xs truncate max-w-[65%]" style={{ color: "#6B6B6B" }}>
                                 {msg.content}
@@ -669,7 +669,7 @@ export default function DashboardPage() {
                                 download="soma-frame.jpg"
                                 className="flex items-center gap-1.5 px-2.5 py-1.5
                                 rounded-xl text-xs font-medium transition-colors"
-                                style={{ background: "#000000", color: "#A3A3A3", border: "1px solid #2A2A2A" }}
+                                style={{ background: "#0A0A0A", color: "#A3A3A3", border: "1px solid #2A2A2A" }}
                               >
                                 <Download size={11} />
                                 Save frame
@@ -679,7 +679,7 @@ export default function DashboardPage() {
                         ) : msg.type === "audio" ? (
                           <div
                             className="inline-flex items-center gap-3 px-4 py-3 rounded-2xl max-w-sm"
-                            style={{ background: "#0D0D0D", border: "1px solid #000000" }}
+                            style={{ background: "#0D0D0D", border: "1px solid #0A0A0A" }}
                           >
                             <button
                               onClick={() => speakMessage(i, msg.content)}
@@ -767,7 +767,7 @@ export default function DashboardPage() {
                                   return (
                                     <code
                                       className="px-1.5 py-0.5 rounded text-xs font-mono"
-                                      style={{ background: "#141414", color: "#4ADE80", border: "1px solid #1A1A1A" }}
+                                      style={{ background: "#141414", color: "#52b1ff", border: "1px solid #1A1A1A" }}
                                     >
                                       {children}
                                     </code>
@@ -787,7 +787,7 @@ export default function DashboardPage() {
                                   <li className="leading-[1.8]">{children}</li>
                                 ),
                                 hr: () => (
-                                  <hr className="my-6" style={{ borderColor: "#000000" }} />
+                                  <hr className="my-6" style={{ borderColor: "#0A0A0A" }} />
                                 ),
                                 blockquote: ({ children }) => (
                                   <blockquote
@@ -819,7 +819,7 @@ export default function DashboardPage() {
                   <div className="flex items-center gap-2">
                     <div
                       className="w-5 h-5 rounded-full overflow-hidden shrink-0"
-                      style={{ border: "1px solid #000000" }}
+                      style={{ border: "1px solid #0A0A0A" }}
                     >
                       <Image
                         src="/logo1.png"
@@ -880,7 +880,7 @@ export default function DashboardPage() {
           <div
             className="flex items-center gap-3 px-4 py-3.5 rounded-2xl"
             style={{
-              background: "#000000",
+              background: "#0A0A0A",
               border: "1px solid rgba(255,255,255,0.08)",
             }}
           >
@@ -909,7 +909,7 @@ export default function DashboardPage() {
                 onClick={() => setShowModeDropdown(!showModeDropdown)}
                 className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-sm
                 transition-colors duration-150"
-                style={{ background: "#000000", color: "#A3A3A3", border: "1px solid #2A2A2A" }}
+                style={{ background: "#0A0A0A", color: "#A3A3A3", border: "1px solid #2A2A2A" }}
               >
                 <currentMode.icon size={13} />
                 <span>{currentMode.label}</span>
@@ -919,7 +919,7 @@ export default function DashboardPage() {
               {showModeDropdown && (
                 <div
                   className="absolute bottom-full right-0 mb-2 w-40 rounded-xl overflow-hidden shadow-2xl z-50"
-                  style={{ background: "#000000", border: "1px solid #2A2A2A" }}
+                  style={{ background: "#0A0A0A", border: "1px solid #2A2A2A" }}
                 >
                   {modeOptions.map((m) => (
                     <button
@@ -928,7 +928,7 @@ export default function DashboardPage() {
                       className="flex items-center gap-2.5 w-full px-3.5 py-2.5 text-sm transition-colors duration-100"
                       style={{
                         color: activeMode === m.value ? "#ffffff" : "#A3A3A3",
-                        background: activeMode === m.value ? "#000000" : "transparent",
+                        background: activeMode === m.value ? "#0A0A0A" : "transparent",
                       }}
                       onMouseEnter={(e) => (e.currentTarget.style.background = "#1A1A1A")}
                       onMouseLeave={(e) =>
