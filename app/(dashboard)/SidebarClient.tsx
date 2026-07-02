@@ -192,7 +192,7 @@ export default function SidebarClient({
             className="flex items-center gap-2.5 w-full px-3.5 py-2.5
             rounded-xl transition-all duration-150"
             style={{ background: "transparent" }}
-            onMouseEnter={(e) => (e.currentTarget.style.background = "#1A1A1A")}
+            onMouseEnter={(e) => (e.currentTarget.style.background = "#000000")}
             onMouseLeave={(e) => (e.currentTarget.style.background = "transparent")}
           >
             <Clock size={15} style={{ color: "#6B6B6B" }} />
