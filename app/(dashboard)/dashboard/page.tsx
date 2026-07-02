@@ -3,7 +3,6 @@
 import { useState, useRef, useEffect } from "react"
 import {
   ArrowUp,
-  Sun,
   ChevronDown,
   MessageSquare,
   ImageIcon,
@@ -119,7 +118,7 @@ function CodeBlock({ language, code }: { language: string; code: string }) {
               className="flex items-center gap-1.5 text-xs transition-colors"
               style={{ color: "#6B6B6B" }}
               onMouseEnter={(e) => (e.currentTarget.style.color = "#A3A3A3")}
-              onMouseLeave={(e) => (e.currentTarget.style.color = "#090909")}
+              onMouseLeave={(e) => (e.currentTarget.style.color = "#6B6B6B")}
             >
               {copied ? <><Check size={11} />Copied</> : <><Copy size={11} />Copy</>}
             </button>
@@ -127,7 +126,7 @@ function CodeBlock({ language, code }: { language: string; code: string }) {
         </div>
         <pre
           className="p-4 overflow-auto text-xs font-mono leading-relaxed"
-          style={{ background: "#090909", color: "#4ADE80" }}
+          style={{ background: "#000000", color: "#4ADE80" }}
         >
           <code>{code}</code>
         </pre>
@@ -379,25 +378,6 @@ export default function DashboardPage() {
   return (
     <div className="flex flex-col h-full relative" style={{ background: "#000000" }}>
 
-      {/* Top-right controls */}
-      <div className="absolute top-4 right-4 flex items-center gap-2 z-10">
-        <button
-          className="w-9 h-9 rounded-full flex items-center justify-center
-          transition-colors duration-150"
-          style={{ background: "#000000" }}
-          onMouseEnter={(e) => (e.currentTarget.style.background = "#1A1A1A")}
-          onMouseLeave={(e) => (e.currentTarget.style.background = "#000000")}
-        >
-          <Sun size={15} style={{ color: "#A3A3A3" }} />
-        </button>
-        <div
-          className="w-9 h-9 rounded-full flex items-center justify-center
-          text-sm font-semibold text-white"
-          style={{ background: "#2A2A2A" }}
-        >
-          M
-        </div>
-      </div>
 
       {/* Messages area */}
       <div className="flex-1 overflow-auto">
@@ -412,7 +392,7 @@ export default function DashboardPage() {
               <div
                 className="absolute inset-0 rounded-3xl pointer-events-none"
                 style={{
-                  background: "radial-gradient(ellipse 80% 60% at 50% 50%, rgba(0, 0, 0, 0.07), transparent 70%)",
+                  background: "radial-gradient(ellipse 80% 60% at 50% 50%, rgba(168,197,255,0.07), transparent 70%)",
                   filter: "blur(20px)",
                 }}
               />
@@ -429,7 +409,7 @@ export default function DashboardPage() {
             {/* Divider */}
             <div
               className="w-full max-w-2xl mb-6"
-              style={{ height: "1px", background: "rgba(0, 0, 0, 0.06)" }}
+              style={{ height: "1px", background: "rgba(255,255,255,0.06)" }}
             />
 
             {/* Prompt input */}
@@ -437,8 +417,8 @@ export default function DashboardPage() {
               <div
                 className="flex items-center gap-3 px-4 py-3.5 rounded-2xl"
                 style={{
-                  background: "#121212",
-                  border: "1px solid rgba(0, 0, 0, 0.08)",
+                  background: "#0A0A0A",
+                  border: "1px solid rgba(255,255,255,0.08)",
                 }}
               >
                 <textarea
@@ -505,12 +485,12 @@ export default function DashboardPage() {
                           text-sm transition-colors duration-100"
                           style={{
                             color: activeMode === m.value ? "#ffffff" : "#A3A3A3",
-                            background: activeMode === m.value ? "#000000" : "transparent",
+                            background: activeMode === m.value ? "#0A0A0A" : "transparent",
                           }}
-                          onMouseEnter={(e) => (e.currentTarget.style.background = "#000000")}
+                          onMouseEnter={(e) => (e.currentTarget.style.background = "#0A0A0A")}
                           onMouseLeave={(e) =>
                             (e.currentTarget.style.background =
-                              activeMode === m.value ? "#000000" : "transparent")
+                              activeMode === m.value ? "#0A0A0A" : "transparent")
                           }
                         >
                           <m.icon size={13} />
@@ -570,245 +550,326 @@ export default function DashboardPage() {
 
         ) : (
 
-          /* Messages */
-          <div className="max-w-3xl mx-auto px-6 py-8 space-y-6">
-            {messages.map((msg, i) => (
-              <div
-                key={i}
-                className={`flex gap-3 ${msg.role === "user" ? "justify-end" : "justify-start"}`}
-              >
-                {msg.role === "assistant" && (
-                  <div
-                    className="w-7 h-7 rounded-full flex items-center
-                    justify-center shrink-0 mt-1 overflow-hidden"
-                    style={{ background: "#000000", border: "1px solid #000000" }}
-                  >
-                    <Image src="/logo1.png" alt="Soma" width={16} height={16} className="object-cover w-full h-full" />
-                  </div>
-                )}
-
-                <div className="max-w-[85%]">
-                  {msg.type === "image" && msg.imageUrl ? (
-                    <div className="relative group">
-                      <img
-                        src={msg.imageUrl}
-                        alt={msg.content}
-                        className="rounded-2xl max-w-sm w-full shadow-xl"
-                        style={{ border: "1px solid #000000" }}
-                        onError={(e) => {
-                          setTimeout(() => {
-                            (e.target as HTMLImageElement).src = msg.imageUrl! + "&retry=" + Date.now()
-                          }, 2000)
-                        }}
-                      />
+          /* Messages — pure black, full-width reading layout */
+          <div
+            className="min-h-full"
+            style={{ background: "#000000" }}
+          >
+            <div className="max-w-2xl mx-auto px-6 py-12 space-y-8 soma-chat-scroll">
+              {messages.map((msg, i) => (
+                <div key={i} className="flex flex-col gap-1">
+                  {msg.role === "user" ? (
+                    /* User message — right-aligned pill */
+                    <div className="flex justify-end">
                       <div
-                        className="absolute bottom-3 left-3 right-3 flex items-center
-                        justify-between opacity-0 group-hover:opacity-100 transition-opacity duration-200"
+                        className="max-w-[72%] px-4 py-3 rounded-2xl rounded-br-md text-sm leading-relaxed"
+                        style={{
+                          background: "#141414",
+                          color: "#ffffff",
+                          border: "1px solid #242424",
+                        }}
                       >
+                        {msg.content}
+                      </div>
+                    </div>
+                  ) : (
+                    /* Assistant message — left-aligned, label above */
+                    <div className="flex flex-col gap-2">
+                      {/* SOMA label */}
+                      <div className="flex items-center gap-2">
+                        <div
+                          className="w-5 h-5 rounded-full overflow-hidden shrink-0"
+                          style={{ border: "1px solid #000000" }}
+                        >
+                          <Image
+                            src="/logo1.png"
+                            alt="Soma"
+                            width={20}
+                            height={20}
+                            className="object-cover w-full h-full"
+                          />
+                        </div>
                         <span
-                          className="text-xs px-2 py-1 rounded-lg truncate max-w-[60%]"
-                          style={{ color: "rgba(255,255,255,0.5)", background: "rgba(0,0,0,0.5)" }}
+                          className="text-xs font-medium"
+                          style={{ color: "#6B6B6B" }}
                         >
-                          {msg.content}
+                          Soma
                         </span>
-                        <button
-                          onClick={() => window.open(msg.imageUrl, "_blank")}
-                          className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg
-                          text-xs font-medium transition-colors"
-                          style={{ background: "#ffffff", color: "#000000" }}
-                        >
-                          <Download size={11} />
-                          Save
-                        </button>
                       </div>
-                    </div>
-                  ) : msg.type === "video" && msg.imageUrl ? (
-                    <div
-                      className="rounded-2xl p-3 overflow-hidden"
-                      style={{ border: "1px solid #000000", background: "#000000" }}
-                    >
-                      <div className="rounded-xl overflow-hidden aspect-video max-w-sm">
-                        <img
-                          src={msg.imageUrl}
-                          alt={msg.content}
-                          className="w-full h-full object-cover animate-[kenburns_8s_ease-in-out_infinite_alternate]"
-                        />
-                      </div>
-                      <div className="flex items-center justify-between mt-2">
-                        <span className="text-xs truncate max-w-[65%]" style={{ color: "#6B6B6B" }}>
-                          {msg.content}
-                        </span>
-                        <a
-                          href={msg.imageUrl}
-                          download="soma-frame.jpg"
-                          className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg
-                          text-xs font-medium transition-colors"
-                          style={{ background: "#ffffff", color: "#000000" }}
-                        >
-                          <Download size={11} />
-                          Save frame
-                        </a>
-                      </div>
-                    </div>
-                  ) : msg.type === "audio" ? (
-                    <div
-                      className="rounded-2xl p-4"
-                      style={{ border: "1px solid #000000", background: "#000000" }}
-                    >
-                      <div className="flex items-center gap-3">
-                        <button
-                          onClick={() => speakMessage(i, msg.content)}
-                          className="w-9 h-9 rounded-full flex items-center justify-center
-                          shrink-0 transition-all duration-150"
-                          style={{ background: "#ffffff" }}
-                        >
-                          {speakingIndex === i && !isPaused
-                            ? <Pause size={14} style={{ color: "#000000" }} />
-                            : <Play size={14} style={{ color: "#000000" }} />
-                          }
-                        </button>
-                        <p className="text-sm flex-1 leading-relaxed" style={{ color: "#A3A3A3" }}>
-                          {msg.content}
-                        </p>
-                        {speakingIndex === i && (
-                          <button
-                            onClick={stopSpeaking}
-                            className="w-7 h-7 rounded-full flex items-center justify-center
-                            shrink-0 transition-colors"
-                            style={{ background: "#000000" }}
+
+                      {/* Content */}
+                      <div className="pl-7">
+                        {msg.type === "image" && msg.imageUrl ? (
+                          <div className="relative group inline-block">
+                            <img
+                              src={msg.imageUrl}
+                              alt={msg.content}
+                              className="rounded-2xl max-w-sm w-full"
+                              style={{ border: "1px solid #000000" }}
+                              onError={(e) => {
+                                setTimeout(() => {
+                                  (e.target as HTMLImageElement).src =
+                                    msg.imageUrl! + "&retry=" + Date.now()
+                                }, 2000)
+                              }}
+                            />
+                            <div
+                              className="absolute bottom-3 left-3 right-3 flex items-center
+                              justify-between opacity-0 group-hover:opacity-100
+                              transition-opacity duration-200"
+                            >
+                              <span
+                                className="text-xs px-2 py-1 rounded-lg truncate max-w-[60%]"
+                                style={{
+                                  color: "rgba(255,255,255,0.6)",
+                                  background: "rgba(0,0,0,0.65)",
+                                  backdropFilter: "blur(8px)",
+                                }}
+                              >
+                                {msg.content}
+                              </span>
+                              <button
+                                onClick={() => window.open(msg.imageUrl, "_blank")}
+                                className="flex items-center gap-1.5 px-3 py-1.5
+                                rounded-xl text-xs font-medium transition-all"
+                                style={{
+                                  background: "rgba(255,255,255,0.95)",
+                                  color: "#000000",
+                                }}
+                              >
+                                <Download size={11} />
+                                Save
+                              </button>
+                            </div>
+                          </div>
+                        ) : msg.type === "video" && msg.imageUrl ? (
+                          <div
+                            className="rounded-2xl overflow-hidden max-w-sm"
+                            style={{ border: "1px solid #000000" }}
                           >
-                            <Square size={10} style={{ color: "#6B6B6B" }} />
-                          </button>
+                            <div className="aspect-video overflow-hidden">
+                              <img
+                                src={msg.imageUrl}
+                                alt={msg.content}
+                                className="w-full h-full object-cover"
+                                style={{
+                                  animation: "kenburns 8s ease-in-out infinite alternate",
+                                }}
+                              />
+                            </div>
+                            <div
+                              className="flex items-center justify-between px-3 py-2.5"
+                              style={{ background: "#0D0D0D", borderTop: "1px solid #000000" }}
+                            >
+                              <span className="text-xs truncate max-w-[65%]" style={{ color: "#6B6B6B" }}>
+                                {msg.content}
+                              </span>
+                              <a
+                                href={msg.imageUrl}
+                                download="soma-frame.jpg"
+                                className="flex items-center gap-1.5 px-2.5 py-1.5
+                                rounded-xl text-xs font-medium transition-colors"
+                                style={{ background: "#000000", color: "#A3A3A3", border: "1px solid #2A2A2A" }}
+                              >
+                                <Download size={11} />
+                                Save frame
+                              </a>
+                            </div>
+                          </div>
+                        ) : msg.type === "audio" ? (
+                          <div
+                            className="inline-flex items-center gap-3 px-4 py-3 rounded-2xl max-w-sm"
+                            style={{ background: "#0D0D0D", border: "1px solid #000000" }}
+                          >
+                            <button
+                              onClick={() => speakMessage(i, msg.content)}
+                              className="w-8 h-8 rounded-full flex items-center justify-center
+                              shrink-0 transition-all duration-150 active:scale-95"
+                              style={{ background: "#ffffff" }}
+                            >
+                              {speakingIndex === i && !isPaused
+                                ? <Pause size={12} style={{ color: "#000000" }} />
+                                : <Play size={12} style={{ color: "#000000" }} />
+                              }
+                            </button>
+                            <p
+                              className="text-sm leading-relaxed flex-1"
+                              style={{ color: "#A3A3A3" }}
+                            >
+                              {msg.content}
+                            </p>
+                            {speakingIndex === i && (
+                              <button
+                                onClick={stopSpeaking}
+                                className="w-6 h-6 rounded-full flex items-center
+                                justify-center shrink-0"
+                                style={{ background: "#000000" }}
+                              >
+                                <Square size={9} style={{ color: "#6B6B6B" }} />
+                              </button>
+                            )}
+                          </div>
+                        ) : (
+                          /* Text response */
+                          <div className="text-sm leading-[1.8]" style={{ color: "#D4D4D4" }}>
+                            <ReactMarkdown
+                              components={{
+                                h1: ({ children }) => (
+                                  <h1
+                                    className="text-xl font-semibold mb-4 mt-2"
+                                    style={{ color: "#ffffff" }}
+                                  >
+                                    {children}
+                                  </h1>
+                                ),
+                                h2: ({ children }) => (
+                                  <h2
+                                    className="text-base font-semibold mb-3 mt-4"
+                                    style={{ color: "#ffffff" }}
+                                  >
+                                    {children}
+                                  </h2>
+                                ),
+                                h3: ({ children }) => (
+                                  <h3
+                                    className="text-sm font-semibold mb-2 mt-3"
+                                    style={{ color: "#E5E5E5" }}
+                                  >
+                                    {children}
+                                  </h3>
+                                ),
+                                p: ({ children }) => (
+                                  <p className="mb-3 last:mb-0 leading-[1.8]">
+                                    {children}
+                                  </p>
+                                ),
+                                strong: ({ children }) => (
+                                  <strong className="font-semibold" style={{ color: "#ffffff" }}>
+                                    {children}
+                                  </strong>
+                                ),
+                                em: ({ children }) => (
+                                  <em className="italic" style={{ color: "#A3A3A3" }}>
+                                    {children}
+                                  </em>
+                                ),
+                                code: ({ children, className }) => {
+                                  const isBlock = className?.includes("language-")
+                                  const lang = className?.replace("language-", "") ?? ""
+                                  if (isBlock) {
+                                    return (
+                                      <CodeBlock
+                                        language={lang}
+                                        code={String(children).replace(/\n$/, "")}
+                                      />
+                                    )
+                                  }
+                                  return (
+                                    <code
+                                      className="px-1.5 py-0.5 rounded text-xs font-mono"
+                                      style={{ background: "#141414", color: "#4ADE80", border: "1px solid #1A1A1A" }}
+                                    >
+                                      {children}
+                                    </code>
+                                  )
+                                },
+                                ul: ({ children }) => (
+                                  <ul className="mb-3 space-y-1.5 pl-4 list-disc marker:text-[#6B6B6B]">
+                                    {children}
+                                  </ul>
+                                ),
+                                ol: ({ children }) => (
+                                  <ol className="mb-3 space-y-1.5 pl-4 list-decimal marker:text-[#6B6B6B]">
+                                    {children}
+                                  </ol>
+                                ),
+                                li: ({ children }) => (
+                                  <li className="leading-[1.8]">{children}</li>
+                                ),
+                                hr: () => (
+                                  <hr className="my-6" style={{ borderColor: "#000000" }} />
+                                ),
+                                blockquote: ({ children }) => (
+                                  <blockquote
+                                    className="border-l-2 pl-4 my-4 italic"
+                                    style={{ borderColor: "#2A2A2A", color: "#6B6B6B" }}
+                                  >
+                                    {children}
+                                  </blockquote>
+                                ),
+                              }}
+                            >
+                              {msg.content}
+                            </ReactMarkdown>
+
+                            {msg.sources && msg.sources.length > 0 && (
+                              <SearchSources sources={msg.sources} />
+                            )}
+                          </div>
                         )}
                       </div>
                     </div>
-                  ) : (
+                  )}
+                </div>
+              ))}
+
+              {/* Loading state */}
+              {(loading || imageLoading) && (
+                <div className="flex flex-col gap-2">
+                  <div className="flex items-center gap-2">
                     <div
-                      className="px-4 py-3 rounded-2xl text-sm leading-relaxed"
-                      style={
-                        msg.role === "user"
-                          ? { background: "#000000", color: "#ffffff", border: "1px solid #000000" }
-                          : { background: "transparent", color: "#ffffff" }
-                      }
+                      className="w-5 h-5 rounded-full overflow-hidden shrink-0"
+                      style={{ border: "1px solid #000000" }}
                     >
-                      {msg.role === "assistant" ? (
-                        <ReactMarkdown
-                          components={{
-                            h1: ({ children }) => <h1 className="text-lg font-bold mb-3 text-white">{children}</h1>,
-                            h2: ({ children }) => <h2 className="text-base font-bold mb-2 text-white">{children}</h2>,
-                            h3: ({ children }) => <h3 className="text-sm font-semibold mb-2 mt-3" style={{ color: "#A3A3A3" }}>{children}</h3>,
-                            p: ({ children }) => <p className="mb-3 last:mb-0 leading-relaxed" style={{ color: "#A3A3A3" }}>{children}</p>,
-                            strong: ({ children }) => <strong className="font-semibold text-white">{children}</strong>,
-                            em: ({ children }) => <em className="italic" style={{ color: "#6B6B6B" }}>{children}</em>,
-                            code: ({ children, className }) => {
-                              const isBlock = className?.includes("language-")
-                              const lang = className?.replace("language-", "") ?? ""
-                              if (isBlock) {
-                                return <CodeBlock language={lang} code={String(children).replace(/\n$/, "")} />
-                              }
-                              return (
-                                <code
-                                  className="px-1.5 py-0.5 rounded text-xs font-mono"
-                                  style={{ background: "#000000", color: "#4ADE80" }}
-                                >
-                                  {children}
-                                </code>
-                              )
-                            },
-                            ul: ({ children }) => <ul className="list-disc list-inside mb-3 space-y-1.5" style={{ color: "#A3A3A3" }}>{children}</ul>,
-                            ol: ({ children }) => <ol className="list-decimal list-inside mb-3 space-y-1.5" style={{ color: "#A3A3A3" }}>{children}</ol>,
-                            li: ({ children }) => <li className="leading-relaxed">{children}</li>,
-                            hr: () => <hr className="my-4" style={{ borderColor: "#000000" }} />,
-                            blockquote: ({ children }) => (
-                              <blockquote
-                                className="border-l-2 pl-4 my-3 italic"
-                                style={{ borderColor: "#000000", color: "#6B6B6B" }}
-                              >
-                                {children}
-                              </blockquote>
-                            ),
-                          }}
-                        >
-                          {msg.content}
-                        </ReactMarkdown>
-                      ) : (
-                        msg.content
-                      )}
-
-                      {msg.provider && (
-                        <div
-                          className="text-xs mt-2 pt-2"
-                          style={{ borderTop: "1px solid #000000", color: "#6B6B6B" }}
-                        >
-                          {msg.provider} · {msg.model}
-                        </div>
-                      )}
-
-                      {msg.sources && msg.sources.length > 0 && (
-                        <SearchSources sources={msg.sources} />
-                      )}
+                      <Image
+                        src="/logo1.png"
+                        alt="Soma"
+                        width={20}
+                        height={20}
+                        className="object-cover w-full h-full animate-pulse"
+                      />
                     </div>
-                  )}
-                </div>
-
-                {msg.role === "user" && (
-                  <div
-                    className="w-7 h-7 rounded-full flex items-center
-                    justify-center shrink-0 mt-1 text-xs font-semibold text-white"
-                    style={{ background: "#2A2A2A" }}
-                  >
-                    M
+                    <span className="text-xs font-medium" style={{ color: "#6B6B6B" }}>Soma</span>
                   </div>
-                )}
-              </div>
-            ))}
-
-            {(loading || imageLoading) && (
-              <div className="flex gap-3 justify-start">
-                <div
-                  className="w-7 h-7 rounded-full flex items-center
-                  justify-center shrink-0 overflow-hidden"
-                  style={{ background: "#000000", border: "1px solid #000000" }}
-                >
-                  <Image src="/logo1.png" alt="Soma" width={16} height={16} className="object-cover w-full h-full animate-pulse" />
+                  <div className="pl-7">
+                    {imageLoading ? (
+                      <div className="flex items-center gap-2.5">
+                        <Loader2 size={13} className="animate-spin" style={{ color: "#6B6B6B" }} />
+                        <span className="text-sm" style={{ color: "#6B6B6B" }}>
+                          {activeMode === "video" ? "Generating video frame..." : "Generating image..."}
+                        </span>
+                      </div>
+                    ) : activeMode === "code" ? (
+                      <div className="flex items-center gap-2.5">
+                        <Loader2 size={13} className="animate-spin" style={{ color: "#4ADE80" }} />
+                        <span className="text-sm" style={{ color: "#6B6B6B" }}>Writing code...</span>
+                      </div>
+                    ) : activeMode === "search" ? (
+                      <div className="flex items-center gap-2.5">
+                        <Loader2 size={13} className="animate-spin" style={{ color: "#60A5FA" }} />
+                        <span className="text-sm" style={{ color: "#6B6B6B" }}>Searching the web...</span>
+                      </div>
+                    ) : (
+                      <div className="flex gap-1 items-center">
+                        {[0, 200, 400].map((d) => (
+                          <div
+                            key={d}
+                            className="w-1 h-1 rounded-full animate-pulse"
+                            style={{
+                              background: "#6B6B6B",
+                              animationDelay: `${d}ms`,
+                              animationDuration: "1.2s",
+                            }}
+                          />
+                        ))}
+                      </div>
+                    )}
+                  </div>
                 </div>
-                <div
-                  className="px-4 py-3 rounded-2xl"
-                  style={{ background: "#121212", border: "1px solid #000000" }}
-                >
-                  {imageLoading ? (
-                    <div className="flex items-center gap-2">
-                      <Loader2 size={14} className="animate-spin" style={{ color: "#6B6B6B" }} />
-                      <span className="text-xs" style={{ color: "#6B6B6B" }}>
-                        {activeMode === "video" ? "Generating video frame..." : "Generating image..."}
-                      </span>
-                    </div>
-                  ) : activeMode === "code" ? (
-                    <div className="flex items-center gap-2">
-                      <Loader2 size={14} className="animate-spin" style={{ color: "#4ADE80" }} />
-                      <span className="text-xs" style={{ color: "#6B6B6B" }}>Writing code...</span>
-                    </div>
-                  ) : activeMode === "search" ? (
-                    <div className="flex items-center gap-2">
-                      <Loader2 size={14} className="animate-spin" style={{ color: "#60A5FA" }} />
-                      <span className="text-xs" style={{ color: "#6B6B6B" }}>Searching the web...</span>
-                    </div>
-                  ) : (
-                    <div className="flex gap-1.5 items-center">
-                      {[0, 150, 300].map((d) => (
-                        <div
-                          key={d}
-                          className="w-1.5 h-1.5 rounded-full animate-bounce"
-                          style={{ background: "#6B6B6B", animationDelay: `${d}ms` }}
-                        />
-                      ))}
-                    </div>
-                  )}
-                </div>
-              </div>
-            )}
+              )}
 
-            <div ref={bottomRef} />
+              <div ref={bottomRef} />
+            </div>
           </div>
         )}
       </div>
@@ -819,7 +880,7 @@ export default function DashboardPage() {
           <div
             className="flex items-center gap-3 px-4 py-3.5 rounded-2xl"
             style={{
-              background: "#121212",
+              background: "#000000",
               border: "1px solid rgba(255,255,255,0.08)",
             }}
           >
@@ -848,7 +909,7 @@ export default function DashboardPage() {
                 onClick={() => setShowModeDropdown(!showModeDropdown)}
                 className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-sm
                 transition-colors duration-150"
-                style={{ background: "#121212", color: "#A3A3A3", border: "1px solid #2A2A2A" }}
+                style={{ background: "#000000", color: "#A3A3A3", border: "1px solid #2A2A2A" }}
               >
                 <currentMode.icon size={13} />
                 <span>{currentMode.label}</span>
@@ -858,7 +919,7 @@ export default function DashboardPage() {
               {showModeDropdown && (
                 <div
                   className="absolute bottom-full right-0 mb-2 w-40 rounded-xl overflow-hidden shadow-2xl z-50"
-                  style={{ background: "#121212", border: "1px solid #2A2A2A" }}
+                  style={{ background: "#000000", border: "1px solid #2A2A2A" }}
                 >
                   {modeOptions.map((m) => (
                     <button
@@ -867,7 +928,7 @@ export default function DashboardPage() {
                       className="flex items-center gap-2.5 w-full px-3.5 py-2.5 text-sm transition-colors duration-100"
                       style={{
                         color: activeMode === m.value ? "#ffffff" : "#A3A3A3",
-                        background: activeMode === m.value ? "#1A1A1A" : "transparent",
+                        background: activeMode === m.value ? "#000000" : "transparent",
                       }}
                       onMouseEnter={(e) => (e.currentTarget.style.background = "#1A1A1A")}
                       onMouseLeave={(e) =>
