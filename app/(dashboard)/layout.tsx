@@ -1,7 +1,7 @@
 import { currentUser } from "@clerk/nextjs/server"
 import { auth } from "@clerk/nextjs/server"
 import { supabase } from "@/lib/supabase"
-import SidebarClient from "./SidebarClient"
+import DashboardShell from "./DashboardShell"
 
 async function getRecentConversations(userId: string) {
   const { data } = await supabase
@@ -23,13 +23,8 @@ export default async function DashboardLayout({
   const recents = userId ? await getRecentConversations(userId) : []
 
   return (
-    <div className="flex h-screen bg-[#0c0c0c] text-white overflow-hidden">
-      <SidebarClient
-        user={{ firstName: user?.firstName }}
-      />
-      <main className="flex-1 overflow-auto">
-        {children}
-      </main>
-    </div>
+    <DashboardShell user={{ firstName: user?.firstName }}>
+      {children}
+    </DashboardShell>
   )
 }
