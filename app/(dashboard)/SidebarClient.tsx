@@ -17,6 +17,8 @@ import {
   LogOut,
   Menu,
   PanelLeftClose,
+  MoreHorizontal,
+  Trash2,
 } from "lucide-react"
 import { useEffect, useState, useRef } from "react"
 
@@ -55,7 +57,10 @@ export default function SidebarClient({
   const [showUserMenu, setShowUserMenu] = useState(false)
   const [collapsed, setCollapsed] = useState(false)
   const [hydrated, setHydrated] = useState(false)
+  const [openMenuFor, setOpenMenuFor] = useState<string | null>(null)
+  const [deletingId, setDeletingId] = useState<string | null>(null)
   const profileRef = useRef<HTMLDivElement>(null)
+  const menuRef = useRef<HTMLDivElement>(null)
 
   // Restore collapsed state from localStorage on mount
   useEffect(() => {
@@ -86,11 +91,22 @@ export default function SidebarClient({
     fetchRecents()
   }, [pathname])
 
-  // Close menu when clicking outside
+  // Close profile menu when clicking outside
   useEffect(() => {
     function handleClickOutside(e: MouseEvent) {
       if (profileRef.current && !profileRef.current.contains(e.target as Node)) {
         setShowUserMenu(false)
+      }
+    }
+    document.addEventListener("mousedown", handleClickOutside)
+    return () => document.removeEventListener("mousedown", handleClickOutside)
+  }, [])
+
+  // Close recent-item menu when clicking outside
+  useEffect(() => {
+    function handleClickOutside(e: MouseEvent) {
+      if (menuRef.current && !menuRef.current.contains(e.target as Node)) {
+        setOpenMenuFor(null)
       }
     }
     document.addEventListener("mousedown", handleClickOutside)
@@ -114,6 +130,26 @@ export default function SidebarClient({
       router.push(`/dashboard/c/${id}`)
     }
     onNavigate?.()
+  }
+
+  async function handleDelete(id: string) {
+    setOpenMenuFor(null)
+    setDeletingId(id)
+    try {
+      const res = await fetch(`/api/ai/conversations/${id}`, { method: "DELETE" })
+      if (res.ok) {
+        setRecents((prev) => prev.filter((c) => c.id !== id))
+        if (pathname === `/dashboard/c/${id}`) {
+          router.push("/dashboard")
+        }
+      } else {
+        console.error("Failed to delete conversation")
+      }
+    } catch (e) {
+      console.error(e)
+    } finally {
+      setDeletingId(null)
+    }
   }
 
   async function handleSignOut() {
@@ -285,26 +321,69 @@ export default function SidebarClient({
                 {recents.map((conv) => {
                   const ModeIcon = getModeIcon(conv.mode)
                   const isActive = pathname === `/dashboard/c/${conv.id}`
+                  const isMenuOpen = openMenuFor === conv.id
+                  const isDeleting = deletingId === conv.id
+
                   return (
-                    <button
-                      key={conv.id}
-                      onClick={() => handleRecentClick(conv.id)}
-                      className="flex items-center gap-2.5 px-3 py-2
-                      rounded-xl w-full text-left transition-all duration-150 text-xs"
-                      style={{
-                        background: isActive ? "#1A1A1A" : "transparent",
-                        color: isActive ? "#ffffff" : "#A3A3A3",
-                      }}
-                      onMouseEnter={(e) => {
-                        if (!isActive) e.currentTarget.style.background = "#111111"
-                      }}
-                      onMouseLeave={(e) => {
-                        if (!isActive) e.currentTarget.style.background = "transparent"
-                      }}
-                    >
-                      <ModeIcon size={11} className="shrink-0" style={{ opacity: 0.45 }} />
-                      <span className="truncate">{conv.title ?? "New conversation"}</span>
-                    </button>
+                    <div key={conv.id} className="relative group">
+                      <button
+                        onClick={() => handleRecentClick(conv.id)}
+                        className="flex items-center gap-2.5 pl-3 pr-8 py-2
+                        rounded-xl w-full text-left transition-all duration-150 text-xs"
+                        style={{
+                          background: isActive || isMenuOpen ? "#1A1A1A" : "transparent",
+                          color: isActive ? "#ffffff" : "#A3A3A3",
+                          opacity: isDeleting ? 0.4 : 1,
+                        }}
+                        onMouseEnter={(e) => {
+                          if (!isActive && !isMenuOpen) e.currentTarget.style.background = "#111111"
+                        }}
+                        onMouseLeave={(e) => {
+                          if (!isActive && !isMenuOpen) e.currentTarget.style.background = "transparent"
+                        }}
+                        disabled={isDeleting}
+                      >
+                        <ModeIcon size={11} className="shrink-0" style={{ opacity: 0.45 }} />
+                        <span className="truncate">{conv.title ?? "New conversation"}</span>
+                      </button>
+
+                      {/* ··· menu trigger — hidden until row hover, or forced visible while its own menu is open */}
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation()
+                          setOpenMenuFor(isMenuOpen ? null : conv.id)
+                        }}
+                        className={`absolute right-1.5 top-1/2 -translate-y-1/2 w-6 h-6 rounded-lg
+                        flex items-center justify-center transition-opacity duration-150
+                        ${isMenuOpen ? "opacity-100" : "opacity-0 group-hover:opacity-100"}`}
+                        style={{ color: "#6B6B6B", background: isMenuOpen ? "#2A2A2A" : "transparent" }}
+                      >
+                        <MoreHorizontal size={13} />
+                      </button>
+
+                      {/* Dropdown */}
+                      {isMenuOpen && (
+                        <div
+                          ref={menuRef}
+                          className="absolute right-0 top-full mt-1 w-36 rounded-xl overflow-hidden shadow-2xl z-50"
+                          style={{ background: "#121212", border: "1px solid #2A2A2A" }}
+                        >
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation()
+                              handleDelete(conv.id)
+                            }}
+                            className="flex items-center gap-2.5 w-full px-3.5 py-2.5 text-xs transition-colors duration-150"
+                            style={{ color: "#FF6B6B" }}
+                            onMouseEnter={(e) => (e.currentTarget.style.background = "#1A1A1A")}
+                            onMouseLeave={(e) => (e.currentTarget.style.background = "transparent")}
+                          >
+                            <Trash2 size={12} />
+                            Delete
+                          </button>
+                        </div>
+                      )}
+                    </div>
                   )
                 })}
               </div>
