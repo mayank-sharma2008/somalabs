@@ -61,13 +61,15 @@ export async function POST(req: NextRequest) {
 
   try {
     if (file.type === "application/pdf") {
-      const pdfParse = (await import("pdf-parse")).default
+      const pdfParseModule: any = await import("pdf-parse")
+      const pdfParse = pdfParseModule.default ?? pdfParseModule
       const parsed = await pdfParse(buffer)
       extractedText = parsed.text.slice(0, 20000) // guard against huge docs blowing context
     } else if (
       file.type === "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
     ) {
-      const mammoth = await import("mammoth")
+      const mammothModule: any = await import("mammoth")
+      const mammoth = mammothModule.default ?? mammothModule        
       const result = await mammoth.extractRawText({ buffer })
       extractedText = result.value.slice(0, 20000)
     } else if (file.type === "text/plain" || file.type === "text/csv") {
