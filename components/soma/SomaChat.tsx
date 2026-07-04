@@ -3,10 +3,15 @@
 import { useState, useRef, useEffect, useCallback } from "react"
 import { ArrowUp, Loader2, Play, Pause, Square, Download, RefreshCw } from "lucide-react"
 import Image from "next/image"
-import type { Capability, Message } from "./types"
+import type { Capability, Message, Attachment } from "./types"
 import { capabilities, detectIntent, systemPrompts, CapabilityChip, CapabilityBadge } from "./capabilities"
 import { SomaMarkdown } from "./SomaMarkdown"
+import AttachmentMenu from "./AttachmentMenu"
+import { AttachmentChip } from "./AttachmentChip"
 import SearchSources from "@/app/(dashboard)/dashboard/SearchSources"
+
+type PendingAttachment = Attachment & { uploading?: boolean; localPreview?: string }
+
 export default function SomaChat({
   initialMessages = [],
   initialCapability = "general",
@@ -24,6 +29,7 @@ export default function SomaChat({
   const [loading, setLoading] = useState(false)
   const [conversationId, setConversationId] = useState<string | null>(initialConversationId)
   const [currentlyGenerating, setCurrentlyGenerating] = useState<string>("")
+  const [attachments, setAttachments] = useState<PendingAttachment[]>([])
 
   const [voices, setVoices] = useState<SpeechSynthesisVoice[]>([])
   const [audioVoice, setAudioVoice] = useState<string>("")
@@ -75,6 +81,86 @@ export default function SomaChat({
     setIsPaused(false)
   }
 
+  // ---- Attachments ----
+
+  async function handleFilesSelected(files: File[]) {
+    const placeholders: PendingAttachment[] = files.map((f) => ({
+      id: `local-${Date.now()}-${Math.random().toString(36).slice(2)}`,
+      name: f.name,
+      type: f.type.startsWith("image/") ? "image" : "document",
+      mimeType: f.type,
+      url: "",
+      size: f.size,
+      uploading: true,
+      localPreview: f.type.startsWith("image/") ? URL.createObjectURL(f) : undefined,
+    }))
+    setAttachments((prev) => [...prev, ...placeholders])
+
+    for (let i = 0; i < files.length; i++) {
+      const file = files[i]
+      const placeholder = placeholders[i]
+      try {
+        const formData = new FormData()
+        formData.append("file", file)
+        const res = await fetch("/api/ai/upload", { method: "POST", body: formData })
+        const data = await res.json()
+
+        if (data.success) {
+          setAttachments((prev) =>
+            prev.map((a) =>
+              a.id === placeholder.id
+                ? {
+                    id: data.id,
+                    name: data.name,
+                    type: data.type,
+                    mimeType: data.mimeType,
+                    url: data.url,
+                    size: data.size,
+                    extractedText: data.extractedText,
+                  }
+                : a
+            )
+          )
+        } else {
+          console.error("Upload failed:", data.error)
+          setAttachments((prev) => prev.filter((a) => a.id !== placeholder.id))
+        }
+      } catch (e) {
+        console.error(e)
+        setAttachments((prev) => prev.filter((a) => a.id !== placeholder.id))
+      } finally {
+        if (placeholder.localPreview) URL.revokeObjectURL(placeholder.localPreview)
+      }
+    }
+  }
+
+  function removeAttachment(id: string) {
+    setAttachments((prev) => {
+      const target = prev.find((a) => a.id === id)
+      if (target?.localPreview) URL.revokeObjectURL(target.localPreview)
+      return prev.filter((a) => a.id !== id)
+    })
+  }
+
+  function buildUserContent(text: string, atts: PendingAttachment[]): string | Array<Record<string, any>> {
+    const docTexts = atts
+      .filter((a) => a.type === "document" && a.extractedText)
+      .map((a) => `--- File: ${a.name} ---\n${a.extractedText}`)
+      .join("\n\n")
+
+    const images = atts.filter((a) => a.type === "image" && a.url)
+    const fullText = [text, docTexts].filter(Boolean).join("\n\n")
+
+    if (images.length === 0) return fullText || text
+
+    return [
+      { type: "text", text: fullText || "Describe what you see in the attached image(s)." },
+      ...images.map((img) => ({ type: "image_url", image_url: { url: img.url } })),
+    ]
+  }
+
+  // ---- Persistence ----
+
   async function persist(userInput: string, assistantContent: string, meta?: Record<string, any>) {
     if (!conversationId) {
       try {
@@ -82,8 +168,8 @@ export default function SomaChat({
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
-            title: userInput.slice(0, 60),
-            model: "llama-3.3-70b-versatile",
+            title: userInput.slice(0, 60) || "Attachment",
+            model: "openai/gpt-oss-120b",
             mode: activeCapability === "general" ? "chat" : activeCapability,
             messages: [
               { role: "user", content: userInput },
@@ -112,19 +198,33 @@ export default function SomaChat({
   }
 
   const handleSubmit = useCallback(async () => {
-    if (!input.trim() || loading) return
+    if ((!input.trim() && attachments.length === 0) || loading) return
+    if (attachments.some((a) => a.uploading)) return // wait for uploads to finish
+
     const userInput = input.trim()
+    const currentAttachments = attachments
+    const forceChat = currentAttachments.length > 0
+
     setInput("")
+    setAttachments([])
     setLoading(true)
     if (textareaRef.current) textareaRef.current.style.height = "auto"
 
-    setMessages((prev) => [...prev, { role: "user", content: userInput, type: "text" }])
+    setMessages((prev) => [
+      ...prev,
+      {
+        role: "user",
+        content: userInput,
+        type: "text",
+        attachments: currentAttachments.length ? currentAttachments : undefined,
+      },
+    ])
 
     let resolvedTool: Exclude<Capability, "general"> =
       activeCapability === "general" ? detectIntent(userInput) : (activeCapability as Exclude<Capability, "general">)
 
     try {
-      if (resolvedTool === "image") {
+      if (!forceChat && resolvedTool === "image") {
         setCurrentlyGenerating("Generating image...")
         const res = await fetch("/api/ai/image", {
           method: "POST", headers: { "Content-Type": "application/json" },
@@ -137,7 +237,7 @@ export default function SomaChat({
         } else {
           setMessages((prev) => [...prev, { role: "assistant", content: "Failed to generate the image. Please try again.", type: "text", capability: "image" }])
         }
-      } else if (resolvedTool === "search") {
+      } else if (!forceChat && resolvedTool === "search") {
         setCurrentlyGenerating("Searching the web...")
         const res = await fetch("/api/ai/search", {
           method: "POST", headers: { "Content-Type": "application/json" },
@@ -147,11 +247,11 @@ export default function SomaChat({
         const content = data.answer || "No results found."
         setMessages((prev) => [...prev, { role: "assistant", content, type: "text", sources: data.sources, capability: "search" }])
         await persist(userInput, content)
-      } else if (resolvedTool === "audio") {
+      } else if (!forceChat && resolvedTool === "audio") {
         setCurrentlyGenerating("Preparing speech...")
         setMessages((prev) => [...prev, { role: "assistant", content: userInput, type: "audio", capability: "audio" }])
         await persist(userInput, userInput)
-      } else if (resolvedTool === "video") {
+      } else if (!forceChat && resolvedTool === "video") {
         setCurrentlyGenerating("Generating video frame...")
         const res = await fetch("/api/ai/image", {
           method: "POST", headers: { "Content-Type": "application/json" },
@@ -164,23 +264,28 @@ export default function SomaChat({
           setMessages((prev) => [...prev, { role: "assistant", content: "Failed to generate the video frame. Please try again.", type: "text", capability: "video" }])
         }
       } else {
-        const isCode = resolvedTool === "code"
-        setCurrentlyGenerating(isCode ? "Writing code..." : "Thinking...")
+        const isCode = !forceChat && resolvedTool === "code"
+        setCurrentlyGenerating(isCode ? "Writing code..." : currentAttachments.length ? "Reading your files..." : "Thinking...")
+
+        const userContent = buildUserContent(userInput, currentAttachments)
+
         const res = await fetch("/api/ai/chat", {
           method: "POST", headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
             messages: [
               { role: "system", content: isCode ? systemPrompts.code : systemPrompts.chat },
               ...messages.map((m) => ({ role: m.role, content: m.content })),
-              { role: "user", content: userInput },
+              { role: "user", content: userContent },
             ],
-            provider: "groq", model: "llama-3.3-70b-versatile", maxTokens: isCode ? 4096 : 1024,
+            provider: "groq",
+            // model intentionally omitted — groq.ts auto-picks the vision model when an image is present
+            maxTokens: isCode ? 4096 : 1024,
           }),
         })
         const data = await res.json()
         const content = data.content || "Sorry, I couldn't respond."
         setMessages((prev) => [...prev, { role: "assistant", content, type: "text", capability: isCode ? "code" : "general", provider: data.provider, model: data.model }])
-        await persist(userInput, content)
+        await persist(userInput || "(attachment)", content)
       }
     } catch (err) {
       console.error(err)
@@ -189,16 +294,19 @@ export default function SomaChat({
       setLoading(false)
       setCurrentlyGenerating("")
     }
-  }, [input, loading, activeCapability, messages, conversationId])
+  }, [input, loading, activeCapability, messages, conversationId, attachments])
 
   function startNew() {
     stopSpeaking()
     setMessages([])
     setInput("")
+    setAttachments([])
     setConversationId(null)
     setActiveCapability("general")
     onNewConversation?.()
   }
+
+  const canSubmit = (input.trim() || attachments.length > 0) && !loading && !attachments.some((a) => a.uploading)
 
   return (
     <div className="flex flex-col h-full" style={{ background: "#000000" }}>
@@ -216,11 +324,22 @@ export default function SomaChat({
             {messages.map((msg, i) => (
               <div key={i}>
                 {msg.role === "user" ? (
-                  <div className="flex justify-end">
-                    <div className="max-w-[70%] px-4 py-3 rounded-2xl rounded-br-md text-sm"
-                      style={{ background: "#111111", color: "#ffffff", border: "1px solid #1E1E1E", lineHeight: "1.7" }}>
-                      {msg.content}
-                    </div>
+                  <div className="flex flex-col items-end gap-2">
+                    {msg.attachments && msg.attachments.length > 0 && (
+                      <div className="flex gap-2 flex-wrap justify-end max-w-[70%]">
+                        {msg.attachments.map((a) => (
+                          <AttachmentChip key={a.id} attachment={a} onRemove={() => {}} />
+                        ))}
+                      </div>
+                    )}
+                    {msg.content && (
+                      <div className="flex justify-end w-full">
+                        <div className="max-w-[70%] px-4 py-3 rounded-2xl rounded-br-md text-sm"
+                          style={{ background: "#111111", color: "#ffffff", border: "1px solid #1E1E1E", lineHeight: "1.7" }}>
+                          {msg.content}
+                        </div>
+                      </div>
+                    )}
                   </div>
                 ) : (
                   <div className="flex flex-col gap-2.5">
@@ -305,7 +424,16 @@ export default function SomaChat({
             ))}
           </div>
 
+          {attachments.length > 0 && (
+            <div className="flex items-center gap-2 flex-wrap mb-3">
+              {attachments.map((a) => (
+                <AttachmentChip key={a.id} attachment={a} uploading={a.uploading} onRemove={() => removeAttachment(a.id)} />
+              ))}
+            </div>
+          )}
+
           <div className="flex items-end gap-3 px-4 py-3.5 rounded-2xl" style={{ background: "#0D0D0D", border: "1px solid rgba(255,255,255,0.07)" }}>
+            <AttachmentMenu onFilesSelected={handleFilesSelected} />
             <textarea
               ref={textareaRef}
               value={input}
@@ -320,8 +448,8 @@ export default function SomaChat({
               className="flex-1 bg-transparent text-sm resize-none focus:outline-none"
               style={{ color: "#ffffff", caretColor: "#ffffff", minHeight: "24px", maxHeight: "120px", lineHeight: "1.6", paddingTop: "2px" }}
             />
-            <button onClick={handleSubmit} disabled={!input.trim() || loading} className="w-8 h-8 rounded-full flex items-center justify-center shrink-0 transition-all duration-150 active:scale-95" style={{ background: input.trim() && !loading ? "#ffffff" : "#1A1A1A", marginBottom: "1px" }}>
-              {loading ? <Loader2 size={13} className="animate-spin" style={{ color: "#6B6B6B" }} /> : <ArrowUp size={13} style={{ color: input.trim() ? "#000000" : "#6B6B6B" }} />}
+            <button onClick={handleSubmit} disabled={!canSubmit} className="w-8 h-8 rounded-full flex items-center justify-center shrink-0 transition-all duration-150 active:scale-95" style={{ background: canSubmit ? "#ffffff" : "#1A1A1A", marginBottom: "1px" }}>
+              {loading ? <Loader2 size={13} className="animate-spin" style={{ color: "#6B6B6B" }} /> : <ArrowUp size={13} style={{ color: canSubmit ? "#000000" : "#6B6B6B" }} />}
             </button>
           </div>
 

@@ -8,35 +8,40 @@ export interface ProviderConfig {
   temperature?: number
 }
 
+// Multimodal content block, OpenAI/Groq-compatible shape
+export type ContentPart =
+  | { type: "text"; text: string }
+  | { type: "image_url"; image_url: { url: string } }
+
 export interface ChatMessage {
   role: "user" | "assistant" | "system"
-  content: string
+  content: string | ContentPart[]
 }
 
 export interface AIProvider {
   name: string
   supportedTasks: TaskType[]
-  
+
   chat(
-    messages: ChatMessage[], 
+    messages: ChatMessage[],
     config?: ProviderConfig
   ): Promise<AIResponse>
-  
+
   generateImage?(
-    prompt: string, 
+    prompt: string,
     config?: ProviderConfig
   ): Promise<AIResponse>
-  
+
   generateCode?(
-    prompt: string, 
+    prompt: string,
     config?: ProviderConfig
   ): Promise<AIResponse>
-  
+
   search?(
-    query: string, 
+    query: string,
     config?: ProviderConfig
   ): Promise<AIResponse>
-  
+
   checkHealth?(): Promise<boolean>
 }
 
@@ -45,7 +50,7 @@ export abstract class BaseProvider implements AIProvider {
   abstract supportedTasks: TaskType[]
 
   abstract chat(
-    messages: ChatMessage[], 
+    messages: ChatMessage[],
     config?: ProviderConfig
   ): Promise<AIResponse>
 
