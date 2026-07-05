@@ -18,6 +18,9 @@ import {
   RefreshCw,
   Pause,
   Square,
+  Pencil,
+  ThumbsUp,
+  ThumbsDown,
 } from "lucide-react"
 import Image from "next/image"
 import ReactMarkdown from "react-markdown"
@@ -54,11 +57,12 @@ interface Message {
   content: string
   type: "text" | "image" | "audio" | "video"
   imageUrl?: string
-  capability?: Capability   // which capability produced this message
+  capability?: Capability
   provider?: string
   model?: string
   sources?: Source[]
   attachments?: Attachment[]
+  timestamp?: number
 }
 
 // ─── Capability chips config ───────────────────────────────────────────────────
@@ -69,42 +73,12 @@ const capabilities: {
   icon: any
   description: string
 }[] = [
-  {
-    label: "General",
-    value: "general",
-    icon: Sparkles,
-    description: "Auto-select the right tool",
-  },
-  {
-    label: "Image",
-    value: "image",
-    icon: ImageIcon,
-    description: "Prioritize image generation",
-  },
-  {
-    label: "Code",
-    value: "code",
-    icon: Code,
-    description: "Prioritize code generation",
-  },
-  {
-    label: "Search",
-    value: "search",
-    icon: Search,
-    description: "Prioritize web search",
-  },
-  {
-    label: "Audio",
-    value: "audio",
-    icon: Music,
-    description: "Prioritize text-to-speech",
-  },
-  {
-    label: "Video",
-    value: "video",
-    icon: Video,
-    description: "Prioritize animated clips",
-  },
+  { label: "General", value: "general", icon: Sparkles, description: "Auto-select the right tool" },
+  { label: "Image", value: "image", icon: ImageIcon, description: "Prioritize image generation" },
+  { label: "Code", value: "code", icon: Code, description: "Prioritize code generation" },
+  { label: "Search", value: "search", icon: Search, description: "Prioritize web search" },
+  { label: "Audio", value: "audio", icon: Music, description: "Prioritize text-to-speech" },
+  { label: "Video", value: "video", icon: Video, description: "Prioritize animated clips" },
 ]
 
 // ─── Intent detection ──────────────────────────────────────────────────────────
@@ -155,9 +129,21 @@ function detectIntent(prompt: string): Exclude<Capability, "general"> {
 // ─── System prompts ────────────────────────────────────────────────────────────
 
 const systemPrompts: Record<string, string> = {
-  chat: `You are Soma, an intelligent AI assistant. Format your responses with markdown.
+  chat: `You are Soma, the AI assistant built by SomaLabs. Format your responses with markdown.
 Use **bold** for emphasis, \`code\` for inline code, code blocks for longer code, and bullet points for lists.
-Be concise but thorough. Match the user's tone.`,
+Be concise but thorough. Match the user's tone.
+
+If asked who you are or what you can do, answer as Soma — do not claim to be built by OpenAI, Google, or any other company, and do not state a specific knowledge cutoff date, since your underlying models change over time.
+
+Soma has several modes the user can switch between using the capability chips above the input box:
+- General — everyday conversation and Q&A (this mode)
+- Image — generates images from text prompts
+- Code — writes and explains code
+- Search — answers using live web search results with citations
+- Audio — generates spoken-style text and reads it aloud via text-to-speech
+- Video — generates short animated video frames from a prompt
+
+Soma can also read attached files — images, PDFs, Word documents, text files, and CSVs — when the user uploads them via the attachment (paperclip) button.`,
 
   code: `You are Soma's code engine — an elite engineer who writes beautiful, production-grade code.
 
@@ -177,6 +163,10 @@ GENERAL:
 
   search: `You are Soma's search engine. Answer using ONLY the sources provided.
 Cite inline using [1], [2], etc. Be concise and direct.`,
+
+  audio: `You are Soma's speech writer. The user wants something read aloud, so write natural, flowing spoken-style text for their request.
+Do not use markdown, headers, bullet points, asterisks, or code formatting — none of that survives being spoken aloud.
+Write in complete, natural sentences the way a person would actually speak them. Keep it well-paced and not overly long unless the user asks for something lengthy.`,
 }
 
 // ─── Capability chip component ─────────────────────────────────────────────────
@@ -232,6 +222,124 @@ function CapabilityChip({
       <cap.icon size={12} />
       {cap.label}
     </button>
+  )
+}
+
+// ─── Message action bar ─────────────────────────────────────────────────────────
+
+function ActionIconButton({
+  onClick,
+  title,
+  active,
+  activeColor,
+  children,
+}: {
+  onClick: () => void
+  title: string
+  active?: boolean
+  activeColor?: string
+  children: React.ReactNode
+}) {
+  return (
+    <button
+      onClick={onClick}
+      title={title}
+      className="w-6 h-6 rounded-lg flex items-center justify-center transition-colors duration-150"
+      style={{ color: active ? activeColor ?? "#ffffff" : "#6B6B6B", background: "transparent" }}
+      onMouseEnter={(e) => {
+        e.currentTarget.style.background = "#1A1A1A"
+        if (!active) e.currentTarget.style.color = "#A3A3A3"
+      }}
+      onMouseLeave={(e) => {
+        e.currentTarget.style.background = "transparent"
+        if (!active) e.currentTarget.style.color = "#6B6B6B"
+      }}
+    >
+      {children}
+    </button>
+  )
+}
+
+function MessageActions({
+  role,
+  timestamp,
+  onCopy,
+  onRegenerate,
+  onEdit,
+  onFeedback,
+  feedback,
+}: {
+  role: "user" | "assistant"
+  timestamp?: number
+  onCopy: () => void
+  onRegenerate?: () => void
+  onEdit?: () => void
+  onFeedback?: (type: "up" | "down") => void
+  feedback?: "up" | "down" | null
+}) {
+  const [copied, setCopied] = useState(false)
+
+  function handleCopyClick() {
+    onCopy()
+    setCopied(true)
+    setTimeout(() => setCopied(false), 1500)
+  }
+
+  const timeLabel = timestamp
+    ? new Date(timestamp).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })
+    : null
+
+  return (
+    <div className={`flex items-center gap-0.5 mt-1.5 ${role === "user" ? "justify-end" : ""}`}>
+      {role === "user" && timeLabel && (
+        <span className="text-[10px] mr-1 select-none" style={{ color: "#4B4B4B" }}>
+          {timeLabel}
+        </span>
+      )}
+
+      {onRegenerate && (
+        <ActionIconButton onClick={onRegenerate} title="Regenerate">
+          <RefreshCw size={12} />
+        </ActionIconButton>
+      )}
+
+      {onEdit && (
+        <ActionIconButton onClick={onEdit} title="Edit">
+          <Pencil size={12} />
+        </ActionIconButton>
+      )}
+
+      <ActionIconButton onClick={handleCopyClick} title="Copy">
+        {copied ? <Check size={12} /> : <Copy size={12} />}
+      </ActionIconButton>
+
+      {onFeedback && (
+        <>
+          <ActionIconButton
+            onClick={() => onFeedback("up")}
+            title="Good response"
+            active={feedback === "up"}
+            activeColor="#4ADE80"
+          >
+            <ThumbsUp size={12} />
+          </ActionIconButton>
+          <ActionIconButton
+            onClick={() => onFeedback("down")}
+            title="Bad response"
+            active={feedback === "down"}
+            activeColor="#FF6B6B"
+          >
+            <ThumbsDown size={12} />
+          </ActionIconButton>
+        </>
+      )}
+
+      {role === "assistant" && timeLabel && (
+        <span className="text-[10px] ml-1 select-none" style={{ color: "#4B4B4B" }}>
+          {timeLabel}
+        </span>
+      )}
+    </div>
   )
 }
 
@@ -417,6 +525,7 @@ export default function DashboardPage() {
   const [conversationId, setConversationId] = useState<string | null>(null)
   const [currentlyGenerating, setCurrentlyGenerating] = useState<string>("")
   const [attachments, setAttachments] = useState<PendingAttachment[]>([])
+  const [feedbackMap, setFeedbackMap] = useState<Record<number, "up" | "down">>({})
 
   // Web Speech API
   const [voices, setVoices] = useState<SpeechSynthesisVoice[]>([])
@@ -599,13 +708,169 @@ export default function DashboardPage() {
     }
   }
 
+  // ── Core generation logic — shared by first send AND regenerate ──────────
+  // historyForModel: the prior turns to include as context (excludes the
+  // current userInput, which is appended separately per branch below).
+  const runTurn = useCallback(
+    async (
+      userInput: string,
+      currentAttachments: PendingAttachment[],
+      historyForModel: Message[],
+      forcedCapability?: Capability
+    ) => {
+      const forceChat = currentAttachments.length > 0
+      let resolvedTool: Exclude<Capability, "general"> =
+        forcedCapability && forcedCapability !== "general"
+          ? (forcedCapability as Exclude<Capability, "general">)
+          : activeCapability === "general"
+          ? detectIntent(userInput)
+          : (activeCapability as Exclude<Capability, "general">)
+
+      if (!forcedCapability && activeCapability !== "general") {
+        resolvedTool = activeCapability as Exclude<Capability, "general">
+      }
+
+      try {
+        if (!forceChat && resolvedTool === "image") {
+          setCurrentlyGenerating("Generating image...")
+          const res = await fetch("/api/ai/image", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              prompt: `${userInput}, highly detailed, 4k quality`,
+              width: "1024",
+              height: "1024",
+            }),
+          })
+          const data = await res.json()
+          if (data.success && data.imageUrl) {
+            setMessages((prev) => [
+              ...prev,
+              { role: "assistant", content: userInput, type: "image", imageUrl: data.imageUrl, capability: "image", timestamp: Date.now() },
+            ])
+            await persist(userInput, userInput, { imageUrl: data.imageUrl })
+          } else {
+            setMessages((prev) => [
+              ...prev,
+              { role: "assistant", content: "Failed to generate the image. Please try again.", type: "text", capability: "image", timestamp: Date.now() },
+            ])
+          }
+
+        } else if (!forceChat && resolvedTool === "search") {
+          setCurrentlyGenerating("Searching the web...")
+          const res = await fetch("/api/ai/search", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ query: userInput }),
+          })
+          const data = await res.json()
+          const content = data.answer || "No results found."
+          setMessages((prev) => [
+            ...prev,
+            { role: "assistant", content, type: "text", sources: data.sources, capability: "search", timestamp: Date.now() },
+          ])
+          await persist(userInput, content)
+
+        } else if (!forceChat && resolvedTool === "audio") {
+          setCurrentlyGenerating("Writing your speech...")
+          const res = await fetch("/api/ai/chat", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              messages: [
+                { role: "system", content: systemPrompts.audio },
+                { role: "user", content: userInput },
+              ],
+              provider: "groq",
+              maxTokens: 1024,
+            }),
+          })
+          const data = await res.json()
+          const content = data.content || "Sorry, I couldn't write that."
+          setMessages((prev) => [
+            ...prev,
+            { role: "assistant", content, type: "audio", capability: "audio", timestamp: Date.now() },
+          ])
+          await persist(userInput, content)
+
+        } else if (!forceChat && resolvedTool === "video") {
+          setCurrentlyGenerating("Generating video frame...")
+          const res = await fetch("/api/ai/image", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              prompt: `${userInput}, highly detailed, cinematic, 4k quality`,
+              width: "1280",
+              height: "768",
+            }),
+          })
+          const data = await res.json()
+          if (data.success && data.imageUrl) {
+            setMessages((prev) => [
+              ...prev,
+              { role: "assistant", content: userInput, type: "video", imageUrl: data.imageUrl, capability: "video", timestamp: Date.now() },
+            ])
+          } else {
+            setMessages((prev) => [
+              ...prev,
+              { role: "assistant", content: "Failed to generate the video frame. Please try again.", type: "text", capability: "video", timestamp: Date.now() },
+            ])
+          }
+
+        } else {
+          const isCode = !forceChat && resolvedTool === "code"
+          setCurrentlyGenerating(isCode ? "Writing code..." : currentAttachments.length ? "Reading your files..." : "Thinking...")
+          const systemPrompt = isCode ? systemPrompts.code : systemPrompts.chat
+
+          const userContent = buildUserContent(userInput, currentAttachments)
+
+          const res = await fetch("/api/ai/chat", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              messages: [
+                { role: "system", content: systemPrompt },
+                ...historyForModel.map((m) => ({ role: m.role, content: m.content })),
+                { role: "user", content: userContent },
+              ],
+              provider: "groq",
+              maxTokens: isCode ? 4096 : 1024,
+            }),
+          })
+          const data = await res.json()
+          const content = data.content || "Sorry, I couldn't respond."
+          setMessages((prev) => [
+            ...prev,
+            {
+              role: "assistant",
+              content,
+              type: "text",
+              capability: isCode ? "code" : "general",
+              provider: data.provider,
+              model: data.model,
+              timestamp: Date.now(),
+            },
+          ])
+          await persist(userInput || "(attachment)", content)
+        }
+      } catch (err) {
+        console.error(err)
+        setMessages((prev) => [
+          ...prev,
+          { role: "assistant", content: "Something went wrong. Please try again.", type: "text", timestamp: Date.now() },
+        ])
+      }
+    },
+    [activeCapability, conversationId]
+  )
+
   const handleSubmit = useCallback(async () => {
     if ((!input.trim() && attachments.length === 0) || loading) return
     if (attachments.some((a) => a.uploading)) return
 
     const userInput = input.trim()
     const currentAttachments = attachments
-    const forceChat = currentAttachments.length > 0
+    const historyForModel = messages
 
     setInput("")
     setAttachments([])
@@ -620,134 +885,49 @@ export default function DashboardPage() {
         content: userInput,
         type: "text",
         attachments: currentAttachments.length ? currentAttachments : undefined,
+        timestamp: Date.now(),
       },
     ])
 
-    let resolvedTool: Exclude<Capability, "general"> =
-      activeCapability === "general"
-        ? detectIntent(userInput)
-        : (activeCapability as Exclude<Capability, "general">)
+    await runTurn(userInput, currentAttachments, historyForModel)
+    setLoading(false)
+    setCurrentlyGenerating("")
+  }, [input, loading, attachments, messages, runTurn])
 
-    if (activeCapability !== "general") {
-      resolvedTool = activeCapability as Exclude<Capability, "general">
-    }
+  // ── Message actions: copy / regenerate / edit / feedback ─────────────────
 
-    try {
-      if (!forceChat && resolvedTool === "image") {
-        setCurrentlyGenerating("Generating image...")
-        const res = await fetch("/api/ai/image", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            prompt: `${userInput}, highly detailed, 4k quality`,
-            width: "1024",
-            height: "1024",
-          }),
-        })
-        const data = await res.json()
-        if (data.success && data.imageUrl) {
-          setMessages((prev) => [
-            ...prev,
-            { role: "assistant", content: userInput, type: "image", imageUrl: data.imageUrl, capability: "image" },
-          ])
-          await persist(userInput, userInput, { imageUrl: data.imageUrl })
-        } else {
-          setMessages((prev) => [
-            ...prev,
-            { role: "assistant", content: "Failed to generate the image. Please try again.", type: "text", capability: "image" },
-          ])
-        }
-      } else if (!forceChat && resolvedTool === "search") {
-        setCurrentlyGenerating("Searching the web...")
-        const res = await fetch("/api/ai/search", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ query: userInput }),
-        })
-        const data = await res.json()
-        const content = data.answer || "No results found."
-        setMessages((prev) => [
-          ...prev,
-          { role: "assistant", content, type: "text", sources: data.sources, capability: "search" },
-        ])
-        await persist(userInput, content)
-      } else if (!forceChat && resolvedTool === "audio") {
-        setCurrentlyGenerating("Preparing speech...")
-        setMessages((prev) => [
-          ...prev,
-          { role: "assistant", content: userInput, type: "audio", capability: "audio" },
-        ])
-        await persist(userInput, userInput)
-      } else if (!forceChat && resolvedTool === "video") {
-        setCurrentlyGenerating("Generating video frame...")
-        const res = await fetch("/api/ai/image", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            prompt: `${userInput}, highly detailed, cinematic, 4k quality`,
-            width: "1280",
-            height: "768",
-          }),
-        })
-        const data = await res.json()
-        if (data.success && data.imageUrl) {
-          setMessages((prev) => [
-            ...prev,
-            { role: "assistant", content: userInput, type: "video", imageUrl: data.imageUrl, capability: "video" },
-          ])
-        } else {
-          setMessages((prev) => [
-            ...prev,
-            { role: "assistant", content: "Failed to generate the video frame. Please try again.", type: "text", capability: "video" },
-          ])
-        }
-      } else {
-        const isCode = !forceChat && resolvedTool === "code"
-        setCurrentlyGenerating(isCode ? "Writing code..." : currentAttachments.length ? "Reading your files..." : "Thinking...")
-        const systemPrompt = isCode ? systemPrompts.code : systemPrompts.chat
+  function handleCopyMessage(content: string) {
+    navigator.clipboard.writeText(content)
+  }
 
-        const userContent = buildUserContent(userInput, currentAttachments)
+  async function handleRegenerate(index: number) {
+    if (loading) return
+    let userIdx = index - 1
+    while (userIdx >= 0 && messages[userIdx].role !== "user") userIdx--
+    if (userIdx < 0) return
 
-        const res = await fetch("/api/ai/chat", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            messages: [
-              { role: "system", content: systemPrompt },
-              ...messages.map((m) => ({ role: m.role, content: m.content })),
-              { role: "user", content: userContent },
-            ],
-            provider: "groq",
-            // model intentionally omitted — groq.ts auto-picks a vision model when an image is present
-            maxTokens: isCode ? 4096 : 1024,
-          }),
-        })
-        const data = await res.json()
-        const content = data.content || "Sorry, I couldn't respond."
-        setMessages((prev) => [
-          ...prev,
-          {
-            role: "assistant",
-            content,
-            type: "text",
-            capability: isCode ? "code" : "general",
-            provider: data.provider,
-            model: data.model,
-          },
-        ])
-        await persist(userInput || "(attachment)", content)
-      }
-    } catch (err) {
-      console.error(err)
-      setMessages((prev) => [
-        ...prev,
-        { role: "assistant", content: "Something went wrong. Please try again.", type: "text" },
-      ])
-    } finally {
-      setLoading(false)
-      setCurrentlyGenerating("")
-    }
-  }, [input, loading, activeCapability, messages, conversationId, voices, audioVoice, attachments])
+    const userMsg = messages[userIdx]
+    const historyForModel = messages.slice(0, userIdx)
+    const capabilityUsed = messages[index]?.capability
+
+    setLoading(true)
+    setMessages((prev) => prev.slice(0, index))
+    await runTurn(userMsg.content, (userMsg.attachments as PendingAttachment[]) ?? [], historyForModel, capabilityUsed)
+    setLoading(false)
+    setCurrentlyGenerating("")
+  }
+
+  function handleEditUser(index: number) {
+    const msg = messages[index]
+    if (msg.role !== "user" || loading) return
+    setInput(msg.content)
+    setMessages((prev) => prev.slice(0, index))
+    setTimeout(() => textareaRef.current?.focus(), 0)
+  }
+
+  function handleFeedback(index: number, type: "up" | "down") {
+    setFeedbackMap((prev) => ({ ...prev, [index]: prev[index] === type ? undefined : type } as Record<number, "up" | "down">))
+  }
 
   function startNew() {
     stopSpeaking()
@@ -757,6 +937,7 @@ export default function DashboardPage() {
     setAttachments([])
     setConversationId(null)
     setActiveCapability("general")
+    setFeedbackMap({})
     if (textareaRef.current) textareaRef.current.style.height = "auto"
   }
 
@@ -769,7 +950,11 @@ export default function DashboardPage() {
     return (
       <span
         className="inline-flex items-center gap-1 text-[10px] px-2 py-0.5 rounded-full"
-        style={{ background: "#0D0D0D", color: "#6B6B6B", border: "1px solid #1A1A1A" }}
+        style={{
+          background: "#0D0D0D",
+          color: "#6B6B6B",
+          border: "1px solid #1A1A1A",
+        }}
       >
         <found.icon size={9} />
         {found.label}
@@ -777,8 +962,12 @@ export default function DashboardPage() {
     )
   }
 
+  // ─────────────────────────────────────────────────────────────────────────────
   return (
-    <div className="flex flex-col h-full" style={{ background: "#000000" }}>
+    <div
+      className="flex flex-col h-full"
+      style={{ background: "#000000" }}
+    >
       <style>{`
         textarea::placeholder { color: #6B6B6B; }
         @keyframes kenburns {
@@ -792,15 +981,21 @@ export default function DashboardPage() {
         .soma-chat-scroll { scrollbar-width: thin; scrollbar-color: #1A1A1A transparent; }
       `}</style>
 
+      {/* ── Message area ─────────────────────────────────────────────────────── */}
       <div className="flex-1 overflow-auto soma-chat-scroll">
         {!hasStarted ? (
+
+          /* ── Hero landing ──────────────────────────────────────────────────── */
           <div className="flex flex-col items-center justify-center min-h-full px-6 py-12">
             <div className="w-full max-w-2xl">
+
+              {/* Hero image */}
               <div className="relative mb-2">
                 <div
                   className="absolute inset-0 pointer-events-none"
                   style={{
-                    background: "radial-gradient(ellipse 70% 50% at 50% 50%, rgba(168,197,255,0.06), transparent 70%)",
+                    background:
+                      "radial-gradient(ellipse 70% 50% at 50% 50%, rgba(168,197,255,0.06), transparent 70%)",
                     filter: "blur(24px)",
                   }}
                 />
@@ -814,8 +1009,13 @@ export default function DashboardPage() {
                 />
               </div>
 
-              <div className="mb-6" style={{ height: "1px", background: "rgba(255,255,255,0.05)" }} />
+              {/* Divider */}
+              <div
+                className="mb-6"
+                style={{ height: "1px", background: "rgba(255,255,255,0.05)" }}
+              />
 
+              {/* Capability chips */}
               <div className="flex items-center gap-2 flex-wrap justify-center mb-4">
                 {capabilities.map((cap) => (
                   <CapabilityChip
@@ -835,9 +1035,13 @@ export default function DashboardPage() {
                 </div>
               )}
 
+              {/* Input */}
               <div
                 className="flex items-end gap-3 px-4 py-3.5 rounded-2xl"
-                style={{ background: "#0D0D0D", border: "1px solid rgba(255,255,255,0.07)" }}
+                style={{
+                  background: "#0D0D0D",
+                  border: "1px solid rgba(255,255,255,0.07)",
+                }}
               >
                 <AttachmentMenu onFilesSelected={handleFilesSelected} />
                 <textarea
@@ -869,8 +1073,12 @@ export default function DashboardPage() {
                 <button
                   onClick={handleSubmit}
                   disabled={!canSubmit}
-                  className="w-8 h-8 rounded-full flex items-center justify-center shrink-0 transition-all duration-150 active:scale-95"
-                  style={{ background: canSubmit ? "#ffffff" : "#1A1A1A", marginBottom: "1px" }}
+                  className="w-8 h-8 rounded-full flex items-center justify-center
+                  shrink-0 transition-all duration-150 active:scale-95"
+                  style={{
+                    background: canSubmit ? "#ffffff" : "#1A1A1A",
+                    marginBottom: "1px",
+                  }}
                 >
                   {loading
                     ? <Loader2 size={13} className="animate-spin" style={{ color: "#6B6B6B" }} />
@@ -879,6 +1087,7 @@ export default function DashboardPage() {
                 </button>
               </div>
 
+              {/* Footer */}
               <p className="text-center text-xs mt-4" style={{ color: "#4B4B4B" }}>
                 By messaging Soma, you agree to our{" "}
                 <a href="#" className="underline" style={{ color: "#6B6B6B" }}>Terms</a>
@@ -887,8 +1096,14 @@ export default function DashboardPage() {
               </p>
             </div>
           </div>
+
         ) : (
-          <div className="min-h-full" style={{ background: "#000000" }}>
+
+          /* ── Active conversation ─────────────────────────────────────────────── */
+          <div
+            className="min-h-full"
+            style={{ background: "#000000" }}
+          >
             <div className="max-w-2xl mx-auto px-6 py-12 space-y-8">
               {messages.map((msg, i) => (
                 <div key={i}>
@@ -902,21 +1117,43 @@ export default function DashboardPage() {
                         </div>
                       )}
                       {msg.content && (
-                        <div className="flex justify-end w-full">
+                        <div className="flex flex-col items-end w-full">
                           <div
                             className="max-w-[70%] px-4 py-3 rounded-2xl rounded-br-md text-sm"
-                            style={{ background: "#111111", color: "#ffffff", border: "1px solid #1E1E1E", lineHeight: "1.7" }}
+                            style={{
+                              background: "#111111",
+                              color: "#ffffff",
+                              border: "1px solid #1E1E1E",
+                              lineHeight: "1.7",
+                            }}
                           >
                             {msg.content}
                           </div>
+                          <MessageActions
+                            role="user"
+                            timestamp={msg.timestamp}
+                            onCopy={() => handleCopyMessage(msg.content)}
+                            onRegenerate={() => handleRegenerate(i + 1 < messages.length ? i + 1 : i)}
+                            onEdit={() => handleEditUser(i)}
+                          />
                         </div>
                       )}
                     </div>
                   ) : (
                     <div className="flex flex-col gap-2.5">
+                      {/* Soma label + capability badge */}
                       <div className="flex items-center gap-2">
-                        <div className="w-5 h-5 rounded-full overflow-hidden shrink-0" style={{ border: "1px solid #1A1A1A" }}>
-                          <Image src="/logo1.png" alt="Soma" width={20} height={20} className="object-cover w-full h-full" />
+                        <div
+                          className="w-5 h-5 rounded-full overflow-hidden shrink-0"
+                          style={{ border: "1px solid #1A1A1A" }}
+                        >
+                          <Image
+                            src="/logo1.png"
+                            alt="Soma"
+                            width={20}
+                            height={20}
+                            className="object-cover w-full h-full"
+                          />
                         </div>
                         <span className="text-xs font-medium" style={{ color: "#6B6B6B" }}>
                           Soma
@@ -924,6 +1161,7 @@ export default function DashboardPage() {
                         <CapabilityBadge cap={msg.capability} />
                       </div>
 
+                      {/* Content */}
                       <div className="pl-7">
                         {msg.type === "image" && msg.imageUrl ? (
                           <div className="relative group inline-block">
@@ -934,20 +1172,30 @@ export default function DashboardPage() {
                               style={{ border: "1px solid #1A1A1A" }}
                               onError={(e) => {
                                 setTimeout(() => {
-                                  (e.target as HTMLImageElement).src = msg.imageUrl! + "&retry=" + Date.now()
+                                  (e.target as HTMLImageElement).src =
+                                    msg.imageUrl! + "&retry=" + Date.now()
                                 }, 2000)
                               }}
                             />
-                            <div className="absolute bottom-3 left-3 right-3 flex items-center justify-between opacity-0 group-hover:opacity-100 transition-opacity duration-200">
+                            <div
+                              className="absolute bottom-3 left-3 right-3 flex items-center
+                              justify-between opacity-0 group-hover:opacity-100
+                              transition-opacity duration-200"
+                            >
                               <span
                                 className="text-xs px-2 py-1 rounded-lg truncate max-w-[60%]"
-                                style={{ color: "rgba(255,255,255,0.6)", background: "rgba(0,0,0,0.7)", backdropFilter: "blur(8px)" }}
+                                style={{
+                                  color: "rgba(255,255,255,0.6)",
+                                  background: "rgba(0,0,0,0.7)",
+                                  backdropFilter: "blur(8px)",
+                                }}
                               >
                                 {msg.content}
                               </span>
                               <button
                                 onClick={() => window.open(msg.imageUrl, "_blank")}
-                                className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-medium"
+                                className="flex items-center gap-1.5 px-3 py-1.5
+                                rounded-xl text-xs font-medium"
                                 style={{ background: "#ffffff", color: "#000000" }}
                               >
                                 <Download size={10} />
@@ -956,24 +1204,44 @@ export default function DashboardPage() {
                             </div>
                           </div>
                         ) : msg.type === "video" && msg.imageUrl ? (
-                          <div className="rounded-2xl overflow-hidden max-w-sm" style={{ border: "1px solid #1A1A1A" }}>
+                          <div
+                            className="rounded-2xl overflow-hidden max-w-sm"
+                            style={{ border: "1px solid #1A1A1A" }}
+                          >
                             <div className="aspect-video overflow-hidden">
                               <img
                                 src={msg.imageUrl}
                                 alt={msg.content}
                                 className="w-full h-full object-cover"
-                                style={{ animation: "kenburns 8s ease-in-out infinite alternate" }}
+                                style={{
+                                  animation:
+                                    "kenburns 8s ease-in-out infinite alternate",
+                                }}
                               />
                             </div>
-                            <div className="flex items-center justify-between px-3 py-2.5" style={{ background: "#0A0A0A", borderTop: "1px solid #1A1A1A" }}>
-                              <span className="text-xs truncate max-w-[60%]" style={{ color: "#6B6B6B" }}>
+                            <div
+                              className="flex items-center justify-between px-3 py-2.5"
+                              style={{
+                                background: "#0A0A0A",
+                                borderTop: "1px solid #1A1A1A",
+                              }}
+                            >
+                              <span
+                                className="text-xs truncate max-w-[60%]"
+                                style={{ color: "#6B6B6B" }}
+                              >
                                 {msg.content}
                               </span>
                               <a
                                 href={msg.imageUrl}
                                 download="soma-frame.jpg"
-                                className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl text-xs font-medium"
-                                style={{ background: "#1A1A1A", color: "#A3A3A3", border: "1px solid #2A2A2A" }}
+                                className="flex items-center gap-1.5 px-2.5 py-1.5
+                                rounded-xl text-xs font-medium"
+                                style={{
+                                  background: "#1A1A1A",
+                                  color: "#A3A3A3",
+                                  border: "1px solid #2A2A2A",
+                                }}
                               >
                                 <Download size={10} />
                                 Save frame
@@ -983,11 +1251,15 @@ export default function DashboardPage() {
                         ) : msg.type === "audio" ? (
                           <div
                             className="inline-flex items-center gap-3 px-4 py-3 rounded-2xl max-w-sm"
-                            style={{ background: "#0A0A0A", border: "1px solid #1A1A1A" }}
+                            style={{
+                              background: "#0A0A0A",
+                              border: "1px solid #1A1A1A",
+                            }}
                           >
                             <button
                               onClick={() => speakMessage(i, msg.content)}
-                              className="w-8 h-8 rounded-full flex items-center justify-center shrink-0 active:scale-95 transition-all"
+                              className="w-8 h-8 rounded-full flex items-center
+                              justify-center shrink-0 active:scale-95 transition-all"
                               style={{ background: "#ffffff" }}
                             >
                               {speakingIndex === i && !isPaused
@@ -995,13 +1267,17 @@ export default function DashboardPage() {
                                 : <Play size={12} style={{ color: "#000000" }} />
                               }
                             </button>
-                            <p className="text-sm leading-relaxed flex-1" style={{ color: "#A3A3A3" }}>
+                            <p
+                              className="text-sm leading-relaxed flex-1"
+                              style={{ color: "#A3A3A3" }}
+                            >
                               {msg.content}
                             </p>
                             {speakingIndex === i && (
                               <button
                                 onClick={stopSpeaking}
-                                className="w-6 h-6 rounded-full flex items-center justify-center shrink-0"
+                                className="w-6 h-6 rounded-full flex items-center
+                                justify-center shrink-0"
                                 style={{ background: "#1A1A1A" }}
                               >
                                 <Square size={9} style={{ color: "#6B6B6B" }} />
@@ -1011,27 +1287,52 @@ export default function DashboardPage() {
                         ) : (
                           <div>
                             <SomaMarkdown content={msg.content} />
-                            {msg.sources && msg.sources.length > 0 && <SearchSources sources={msg.sources} />}
+                            {msg.sources && msg.sources.length > 0 && (
+                              <SearchSources sources={msg.sources} />
+                            )}
                           </div>
                         )}
+
+                        <MessageActions
+                          role="assistant"
+                          timestamp={msg.timestamp}
+                          onCopy={() => handleCopyMessage(msg.content)}
+                          onRegenerate={() => handleRegenerate(i)}
+                          onFeedback={(type) => handleFeedback(i, type)}
+                          feedback={feedbackMap[i]}
+                        />
                       </div>
                     </div>
                   )}
                 </div>
               ))}
 
+              {/* Loading */}
               {loading && (
                 <div className="flex flex-col gap-2.5">
                   <div className="flex items-center gap-2">
-                    <div className="w-5 h-5 rounded-full overflow-hidden shrink-0" style={{ border: "1px solid #1A1A1A" }}>
-                      <Image src="/logo1.png" alt="Soma" width={20} height={20} className="object-cover w-full h-full animate-pulse" />
+                    <div
+                      className="w-5 h-5 rounded-full overflow-hidden shrink-0"
+                      style={{ border: "1px solid #1A1A1A" }}
+                    >
+                      <Image
+                        src="/logo1.png"
+                        alt="Soma"
+                        width={20}
+                        height={20}
+                        className="object-cover w-full h-full animate-pulse"
+                      />
                     </div>
                     <span className="text-xs font-medium" style={{ color: "#6B6B6B" }}>
                       Soma
                     </span>
                   </div>
                   <div className="pl-7 flex items-center gap-2.5">
-                    <Loader2 size={12} className="animate-spin" style={{ color: "#4B4B4B" }} />
+                    <Loader2
+                      size={12}
+                      className="animate-spin"
+                      style={{ color: "#4B4B4B" }}
+                    />
                     <span className="text-sm" style={{ color: "#4B4B4B" }}>
                       {currentlyGenerating || "Thinking..."}
                     </span>
@@ -1045,9 +1346,14 @@ export default function DashboardPage() {
         )}
       </div>
 
+      {/* ── Persistent input (after first message) ───────────────────────────── */}
       {hasStarted && (
-        <div className="shrink-0 px-6 pb-5 pt-3" style={{ background: "#000000" }}>
+        <div
+          className="shrink-0 px-6 pb-5 pt-3"
+          style={{ background: "#000000" }}
+        >
           <div className="max-w-2xl mx-auto">
+            {/* Capability chips — always visible */}
             <div className="flex items-center gap-2 flex-wrap mb-3">
               {capabilities.map((cap) => (
                 <CapabilityChip
@@ -1067,9 +1373,13 @@ export default function DashboardPage() {
               </div>
             )}
 
+            {/* Input */}
             <div
               className="flex items-end gap-3 px-4 py-3.5 rounded-2xl"
-              style={{ background: "#0D0D0D", border: "1px solid rgba(255,255,255,0.07)" }}
+              style={{
+                background: "#0D0D0D",
+                border: "1px solid rgba(255,255,255,0.07)",
+              }}
             >
               <AttachmentMenu onFilesSelected={handleFilesSelected} />
               <textarea
@@ -1101,8 +1411,12 @@ export default function DashboardPage() {
               <button
                 onClick={handleSubmit}
                 disabled={!canSubmit}
-                className="w-8 h-8 rounded-full flex items-center justify-center shrink-0 transition-all duration-150 active:scale-95"
-                style={{ background: canSubmit ? "#ffffff" : "#1A1A1A", marginBottom: "1px" }}
+                className="w-8 h-8 rounded-full flex items-center justify-center
+                shrink-0 transition-all duration-150 active:scale-95"
+                style={{
+                  background: canSubmit ? "#ffffff" : "#1A1A1A",
+                  marginBottom: "1px",
+                }}
               >
                 {loading
                   ? <Loader2 size={13} className="animate-spin" style={{ color: "#6B6B6B" }} />
@@ -1111,6 +1425,7 @@ export default function DashboardPage() {
               </button>
             </div>
 
+            {/* New conversation */}
             <div className="flex justify-center mt-3">
               <button
                 onClick={startNew}
