@@ -63,6 +63,7 @@ interface Message {
   sources?: Source[]
   attachments?: Attachment[]
   timestamp?: number
+  projectFiles?: Record<string, string>
 }
 
 // ─── Capability chips config ───────────────────────────────────────────────────
@@ -145,21 +146,24 @@ Soma has several modes the user can switch between using the capability chips ab
 
 Soma can also read attached files — images, PDFs, Word documents, text files, and CSVs — when the user uploads them via the attachment (paperclip) button.`,
 
-  code: `You are Soma's code engine — an elite engineer who writes beautiful, production-grade code.
+  code: `You are Soma's code engine — an elite full-stack engineer who builds real, runnable projects, not toy snippets. Think Claude Code, Replit, or Lovable.
 
-REACT/JSX RULES:
-- Always start with: import { useState } from "react"
-- Always end with: export default function App() { ... }
-- Use Tailwind CSS classes for ALL styling — make it look polished and premium
-- Write COMPLETE, working code — never truncate or use placeholder comments
+OUTPUT FORMAT — always structure your response exactly like this:
+1. One or two sentences describing what you built or changed.
+2. Then, one block per file using this exact marker format (no markdown code fences around them):
 
-HTML RULES:
-- Write complete HTML with inline <style> using modern CSS
+===FILE: /App.js===
+<complete file content>
+===FILE: /components/Header.js===
+<complete file content>
 
-GENERAL:
-- Use markdown code blocks with correct language identifier (\`\`\`jsx, \`\`\`html, \`\`\`python, etc.)
-- Write COMPLETE code. Never truncate.
-- Briefly explain key features after the code.`,
+RULES:
+- Always output the COMPLETE current content of every relevant file — never partial diffs, never "// ... rest unchanged" placeholders.
+- Default stack: React (function components, hooks). Tailwind CSS is already available — don't import it, just use the classes.
+- The main component file must be /App.js with "export default function App()".
+- Split larger UIs into multiple files under /components/ rather than one giant file.
+- If the user's message includes "Current project files", they're asking you to MODIFY an existing project — output the full updated set of files reflecting the change, including any files that didn't change.
+- Never use \`\`\` code fences around the ===FILE=== blocks — the raw marker format is required for parsing.`,
 
   search: `You are Soma's search engine. Answer using ONLY the sources provided.
 Cite inline using [1], [2], etc. Be concise and direct.`,
@@ -526,6 +530,8 @@ export default function DashboardPage() {
   const [currentlyGenerating, setCurrentlyGenerating] = useState<string>("")
   const [attachments, setAttachments] = useState<PendingAttachment[]>([])
   const [feedbackMap, setFeedbackMap] = useState<Record<number, "up" | "down">>({})
+  const [currentProject, setCurrentProject] = useState<Record<string, string> | null>(null)
+  const [previewFiles, setPreviewFiles] = useState<Record<string, string> | null>(null)
 
   // Web Speech API
   const [voices, setVoices] = useState<SpeechSynthesisVoice[]>([])
@@ -664,6 +670,23 @@ export default function DashboardPage() {
     ]
   }
 
+  function parseProjectFiles(content: string): { summary: string; files: Record<string, string> } | null {
+    const fileRegex = /===FILE:\s*(\/[^\s=]+)\s*===\n([\s\S]*?)(?=\n===FILE:|$)/g
+    const files: Record<string, string> = {}
+    let match: RegExpExecArray | null
+    let firstIndex = content.length
+
+    while ((match = fileRegex.exec(content)) !== null) {
+      const [, path, body] = match
+      files[path.trim()] = body.trim()
+      firstIndex = Math.min(firstIndex, match.index)
+    }
+
+    if (Object.keys(files).length === 0) return null
+    const summary = content.slice(0, firstIndex).trim()
+    return { summary, files }
+  }
+
   async function persist(
     userInput: string,
     assistantContent: string,
@@ -709,8 +732,6 @@ export default function DashboardPage() {
   }
 
   // ── Core generation logic — shared by first send AND regenerate ──────────
-  // historyForModel: the prior turns to include as context (excludes the
-  // current userInput, which is appended separately per branch below).
   const runTurn = useCallback(
     async (
       userInput: string,
@@ -822,7 +843,15 @@ export default function DashboardPage() {
           setCurrentlyGenerating(isCode ? "Writing code..." : currentAttachments.length ? "Reading your files..." : "Thinking...")
           const systemPrompt = isCode ? systemPrompts.code : systemPrompts.chat
 
-          const userContent = buildUserContent(userInput, currentAttachments)
+          let userContent = buildUserContent(userInput, currentAttachments)
+
+          if (isCode && currentProject) {
+            const projectContext = Object.entries(currentProject)
+              .map(([path, fileCode]) => `FILE ${path}:\n${fileCode}`)
+              .join("\n\n")
+            const instruction = `Current project files:\n\n${projectContext}\n\nUser request: ${userInput}\n\nOutput the complete updated set of project files.`
+            userContent = currentAttachments.length > 0 ? buildUserContent(instruction, currentAttachments) : instruction
+          }
 
           const res = await fetch("/api/ai/chat", {
             method: "POST",
@@ -834,24 +863,42 @@ export default function DashboardPage() {
                 { role: "user", content: userContent },
               ],
               provider: "groq",
-              maxTokens: isCode ? 4096 : 1024,
+              maxTokens: isCode ? 8192 : 1024,
             }),
           })
           const data = await res.json()
-          const content = data.content || "Sorry, I couldn't respond."
-          setMessages((prev) => [
-            ...prev,
-            {
+          const raw = data.content || "Sorry, I couldn't respond."
+
+          let newMessage: Message
+          if (isCode) {
+            const parsed = parseProjectFiles(raw)
+            if (parsed) {
+              setCurrentProject(parsed.files)
+              newMessage = {
+                role: "assistant",
+                content: parsed.summary || "Project updated.",
+                type: "text",
+                capability: "code",
+                projectFiles: parsed.files,
+                timestamp: Date.now(),
+              }
+            } else {
+              newMessage = { role: "assistant", content: raw, type: "text", capability: "code", timestamp: Date.now() }
+            }
+          } else {
+            newMessage = {
               role: "assistant",
-              content,
+              content: raw,
               type: "text",
-              capability: isCode ? "code" : "general",
+              capability: "general",
               provider: data.provider,
               model: data.model,
               timestamp: Date.now(),
-            },
-          ])
-          await persist(userInput || "(attachment)", content)
+            }
+          }
+
+          setMessages((prev) => [...prev, newMessage])
+          await persist(userInput || "(attachment)", newMessage.content)
         }
       } catch (err) {
         console.error(err)
@@ -861,7 +908,7 @@ export default function DashboardPage() {
         ])
       }
     },
-    [activeCapability, conversationId]
+    [activeCapability, conversationId, currentProject]
   )
 
   const handleSubmit = useCallback(async () => {
@@ -938,6 +985,8 @@ export default function DashboardPage() {
     setConversationId(null)
     setActiveCapability("general")
     setFeedbackMap({})
+    setCurrentProject(null)
+    setPreviewFiles(null)
     if (textareaRef.current) textareaRef.current.style.height = "auto"
   }
 
@@ -1293,6 +1342,19 @@ export default function DashboardPage() {
                           </div>
                         )}
 
+                        {msg.projectFiles && (
+                          <button
+                            onClick={() => setPreviewFiles(msg.projectFiles!)}
+                            className="mt-2 flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-medium transition-colors duration-150"
+                            style={{ background: "#1A1A1A", color: "#E5E5E5", border: "1px solid #2A2A2A" }}
+                            onMouseEnter={(e) => (e.currentTarget.style.background = "#222222")}
+                            onMouseLeave={(e) => (e.currentTarget.style.background = "#1A1A1A")}
+                          >
+                            <Play size={11} />
+                            Open live project ({Object.keys(msg.projectFiles).length} files)
+                          </button>
+                        )}
+
                         <MessageActions
                           role="assistant"
                           timestamp={msg.timestamp}
@@ -1440,6 +1502,10 @@ export default function DashboardPage() {
             </div>
           </div>
         </div>
+      )}
+
+      {previewFiles && (
+        <CodePreview files={previewFiles} onClose={() => setPreviewFiles(null)} />
       )}
     </div>
   )
