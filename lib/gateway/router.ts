@@ -2,11 +2,19 @@ import { AIResponse, ProviderHealth, ProviderStatus } from "../../types/ai"
 import { AIProvider, ChatMessage, ProviderConfig } from "../providers/base"
 import { groqProvider } from "../providers/groq"
 import { geminiProvider } from "../providers/gemini"
+import { openrouterProvider } from "../providers/openrouter"
+import { cerebrasProvider } from "../providers/cerebras"
 
 const providerMap: Record<string, AIProvider> = {
   groq: groqProvider,
   gemini: geminiProvider,
+  openrouter: openrouterProvider,
+  cerebras: cerebrasProvider,
 }
+
+// Groq is the known-reliable provider — always try it first regardless of
+// what preferredProvider is passed, then fall back to the rest in this order.
+const FALLBACK_ORDER = ["groq", "gemini", "openrouter", "cerebras"]
 
 const healthMap: Record<string, ProviderHealth> = {}
 
@@ -24,28 +32,24 @@ export async function routeChat(
   config?: ProviderConfig,
   preferredProvider?: string
 ): Promise<AIResponse> {
-  console.log("Routing to provider:", preferredProvider, "model:", config?.model)
+  // Build the try-order: preferredProvider first (if valid and not already
+  // Groq), then Groq, then the rest — de-duplicated.
+  const order = [preferredProvider, ...FALLBACK_ORDER].filter(
+    (name, idx, arr) => name && providerMap[name] && arr.indexOf(name) === idx
+  ) as string[]
 
-  // Try preferred provider first
-  if (preferredProvider && providerMap[preferredProvider]) {
-    const provider = providerMap[preferredProvider]
-    console.log("Using provider:", provider.name)
-    
-    const response = await provider.chat(messages, config)
-    console.log("Response success:", response.success, "content length:", response.content?.length)
-    
-    updateHealth(provider.name, response.latencyMs, response.success)
-    if (response.success && response.content) return response
-    console.warn(`Provider ${provider.name} failed or returned empty, trying fallback...`)
-  }
+  for (const name of order) {
+    const provider = providerMap[name]
+    console.log("Trying provider:", provider.name)
 
-  // Fallback to other providers
-  const fallbacks = Object.values(providerMap).filter(p => p.name !== preferredProvider)
-  
-  for (const provider of fallbacks) {
     const response = await provider.chat(messages, config)
     updateHealth(provider.name, response.latencyMs, response.success)
-    if (response.success && response.content) return response
+
+    if (response.success && response.content) {
+      console.log("Provider succeeded:", provider.name)
+      return response
+    }
+    console.warn(`Provider ${provider.name} failed or returned empty (${response.error ?? "no error message"}), trying next...`)
   }
 
   return {

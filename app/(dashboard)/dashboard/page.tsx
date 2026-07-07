@@ -18,16 +18,18 @@ import {
   RefreshCw,
   Pause,
   Square,
+  Paperclip,
+  FileText,
+  X,
   Pencil,
   ThumbsUp,
   ThumbsDown,
 } from "lucide-react"
 import Image from "next/image"
 import ReactMarkdown from "react-markdown"
+import remarkGfm from "remark-gfm"
 import CodePreview from "./CodePreview"
 import SearchSources from "./SearchSources"
-import AttachmentMenu from "@/components/soma/AttachmentMenu"
-import { AttachmentChip } from "@/components/soma/AttachmentChip"
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -50,7 +52,11 @@ interface Attachment {
   size: number
 }
 
-type PendingAttachment = Attachment & { uploading?: boolean; localPreview?: string }
+interface UploadingFile {
+  name: string
+  type: "image" | "document"
+  localPreview?: string
+}
 
 interface Message {
   role: "user" | "assistant"
@@ -63,7 +69,6 @@ interface Message {
   sources?: Source[]
   attachments?: Attachment[]
   timestamp?: number
-  projectFiles?: Record<string, string>
 }
 
 // ─── Capability chips config ───────────────────────────────────────────────────
@@ -91,38 +96,28 @@ function detectIntent(prompt: string): Exclude<Capability, "general"> {
     /\b(generate|create|draw|design|paint|make|show me|produce).{0,30}(image|photo|picture|logo|icon|illustration|artwork|banner|poster|portrait|thumbnail|visual|render|sketch)\b/.test(p) ||
     /\b(image|photo|picture|logo|illustration|artwork) of\b/.test(p) ||
     /\b(futuristic|cinematic|realistic|artistic|anime|pixel art)\b.{0,20}(image|photo|picture|logo|style)\b/.test(p)
-  ) {
-    return "image"
-  }
+  ) return "image"
 
   if (
     /\b(video|film|animation|reel|clip|footage|cinematic|motion|animated)\b/.test(p) &&
     /\b(create|make|generate|produce|build)\b/.test(p)
-  ) {
-    return "video"
-  }
+  ) return "video"
 
   if (
     /\b(speak|say aloud|read out|narrate|voice|tts|text.to.speech|audio of|speech)\b/.test(p) ||
     /\b(convert|turn).{0,20}(text|this).{0,20}(speech|audio|voice)\b/.test(p)
-  ) {
-    return "audio"
-  }
+  ) return "audio"
 
   if (
     /\b(latest|breaking|today|current|recent|news|trending|what happened|stock price|weather|live|2024|2025|2026)\b/.test(p) ||
     /\b(search|look up|find|google|what is the)\b.{0,20}\b(latest|current|today|now|recent)\b/.test(p)
-  ) {
-    return "search"
-  }
+  ) return "search"
 
   if (
     /\b(write|build|create|implement|generate|code|script|function|class|component|api|endpoint|website|app|page|program|algorithm|debug|fix|refactor)\b.{0,30}\b(in|using|with|for)?\b.{0,15}\b(javascript|typescript|python|react|next\.?js|html|css|node|sql|rust|go|java|swift|kotlin|php)\b/.test(p) ||
     /\b(write me|build me|create me|code)\b.{0,20}\b(a|an|the)\b.{0,20}\b(function|component|class|script|page|app|website|api|backend|frontend|hook|util|helper)\b/.test(p) ||
     /\b(how do i|how to|show me how).{0,30}(code|implement|build|create|program|develop)\b/.test(p)
-  ) {
-    return "code"
-  }
+  ) return "code"
 
   return "chat" as any
 }
@@ -130,47 +125,31 @@ function detectIntent(prompt: string): Exclude<Capability, "general"> {
 // ─── System prompts ────────────────────────────────────────────────────────────
 
 const systemPrompts: Record<string, string> = {
-  chat: `You are Soma, the AI assistant built by SomaLabs. Format your responses with markdown.
+  chat: `You are Soma, an intelligent AI assistant. Format your responses with markdown.
 Use **bold** for emphasis, \`code\` for inline code, code blocks for longer code, and bullet points for lists.
-Be concise but thorough. Match the user's tone.
+Never use raw HTML tags like <br> — use a blank line for paragraph breaks, and use actual markdown table syntax (| col | col |) for tables, not HTML.
+Be concise but thorough. Match the user's tone.`,
 
-If asked who you are or what you can do, answer as Soma — do not claim to be built by OpenAI, Google, or any other company, and do not state a specific knowledge cutoff date, since your underlying models change over time.
+  code: `You are Soma's code engine — an elite engineer who writes beautiful, production-grade code.
 
-Soma has several modes the user can switch between using the capability chips above the input box:
-- General — everyday conversation and Q&A (this mode)
-- Image — generates images from text prompts
-- Code — writes and explains code
-- Search — answers using live web search results with citations
-- Audio — generates spoken-style text and reads it aloud via text-to-speech
-- Video — generates short animated video frames from a prompt
+REACT/JSX RULES:
+- Always start with: import { useState } from "react"
+- Always end with: export default function App() { ... }
+- Use Tailwind CSS classes for ALL styling — make it look polished and premium
+- Write COMPLETE, working code — never truncate or use placeholder comments
 
-Soma can also read attached files — images, PDFs, Word documents, text files, and CSVs — when the user uploads them via the attachment (paperclip) button.`,
+HTML RULES:
+- Write complete HTML with inline <style> using modern CSS
 
-  code: `You are Soma's code engine — an elite full-stack engineer who builds real, runnable projects, not toy snippets. Think Claude Code, Replit, or Lovable.
-
-OUTPUT FORMAT — always structure your response exactly like this:
-1. One or two sentences describing what you built or changed.
-2. Then, one block per file using this exact marker format (no markdown code fences around them):
-
-===FILE: /App.js===
-<complete file content>
-===FILE: /components/Header.js===
-<complete file content>
-
-RULES:
-- Always output the COMPLETE current content of every relevant file — never partial diffs, never "// ... rest unchanged" placeholders.
-- Default stack: React (function components, hooks). Tailwind CSS is already available — don't import it, just use the classes.
-- The main component file must be /App.js with "export default function App()".
-- Split larger UIs into multiple files under /components/ rather than one giant file.
-- If the user's message includes "Current project files", they're asking you to MODIFY an existing project — output the full updated set of files reflecting the change, including any files that didn't change.
-- Never use \`\`\` code fences around the ===FILE=== blocks — the raw marker format is required for parsing.`,
+GENERAL:
+- Use markdown code blocks with correct language identifier (\`\`\`jsx, \`\`\`html, \`\`\`python, etc.)
+- Write COMPLETE code. Never truncate.
+- Never use raw HTML tags like <br> outside of actual HTML code blocks — use a blank line for paragraph breaks in your explanations.
+- Briefly explain key features after the code.`,
 
   search: `You are Soma's search engine. Answer using ONLY the sources provided.
-Cite inline using [1], [2], etc. Be concise and direct.`,
-
-  audio: `You are Soma's speech writer. The user wants something read aloud, so write natural, flowing spoken-style text for their request.
-Do not use markdown, headers, bullet points, asterisks, or code formatting — none of that survives being spoken aloud.
-Write in complete, natural sentences the way a person would actually speak them. Keep it well-paced and not overly long unless the user asks for something lengthy.`,
+Cite inline using [1], [2], etc. Never use raw HTML tags like <br> — use blank lines for paragraph breaks.
+Be concise and direct.`,
 }
 
 // ─── Capability chip component ─────────────────────────────────────────────────
@@ -203,6 +182,7 @@ function CapabilityChip({
         transition: "all 0.18s ease",
         boxShadow: active ? "0 0 16px rgba(255,255,255,0.12)" : "none",
         transform: "translateY(0)",
+        whiteSpace: "nowrap",
         userSelect: "none" as const,
         WebkitUserSelect: "none" as const,
       }}
@@ -226,6 +206,141 @@ function CapabilityChip({
       <cap.icon size={12} />
       {cap.label}
     </button>
+  )
+}
+
+// ─── Attachment menu (the "+" popup) — inlined, no external file needed ───────
+
+function AttachmentMenu({ onFilesSelected }: { onFilesSelected: (files: File[]) => void }) {
+  const [open, setOpen] = useState(false)
+  const menuRef = useRef<HTMLDivElement>(null)
+  const imageInputRef = useRef<HTMLInputElement>(null)
+  const docInputRef = useRef<HTMLInputElement>(null)
+
+  useEffect(() => {
+    function handleClickOutside(e: MouseEvent) {
+      if (menuRef.current && !menuRef.current.contains(e.target as Node)) {
+        setOpen(false)
+      }
+    }
+    document.addEventListener("mousedown", handleClickOutside)
+    return () => document.removeEventListener("mousedown", handleClickOutside)
+  }, [])
+
+  function handleFileChange(e: React.ChangeEvent<HTMLInputElement>) {
+    const files = Array.from(e.target.files ?? [])
+    if (files.length) onFilesSelected(files)
+    e.target.value = ""
+    setOpen(false)
+  }
+
+  return (
+    <div className="relative" ref={menuRef}>
+      <input
+        ref={imageInputRef}
+        type="file"
+        accept="image/png,image/jpeg,image/webp,image/gif"
+        multiple
+        className="hidden"
+        onChange={handleFileChange}
+      />
+      <input
+        ref={docInputRef}
+        type="file"
+        accept=".pdf,.txt,.docx,application/pdf,text/plain,application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+        multiple
+        className="hidden"
+        onChange={handleFileChange}
+      />
+
+      <button
+        type="button"
+        onClick={() => setOpen((p) => !p)}
+        title="Attach files"
+        className="w-8 h-8 rounded-full flex items-center justify-center shrink-0 transition-colors duration-150"
+        style={{ background: "#1A1A1A", color: "#A3A3A3" }}
+      >
+        <Paperclip size={14} />
+      </button>
+
+      {open && (
+        <div
+          className="absolute bottom-full left-0 mb-2 w-56 rounded-xl overflow-hidden shadow-2xl z-50"
+          style={{ background: "#121212", border: "1px solid #2A2A2A" }}
+        >
+          <button
+            type="button"
+            onClick={() => imageInputRef.current?.click()}
+            className="flex items-center gap-3 w-full px-4 py-3 text-sm text-left transition-colors duration-150"
+            style={{ color: "#E5E5E5" }}
+            onMouseEnter={(e) => (e.currentTarget.style.background = "#1A1A1A")}
+            onMouseLeave={(e) => (e.currentTarget.style.background = "transparent")}
+          >
+            <ImageIcon size={15} style={{ color: "#A3A3A3" }} />
+            Add photos
+          </button>
+          <button
+            type="button"
+            onClick={() => docInputRef.current?.click()}
+            className="flex items-center gap-3 w-full px-4 py-3 text-sm text-left transition-colors duration-150"
+            style={{ color: "#E5E5E5" }}
+            onMouseEnter={(e) => (e.currentTarget.style.background = "#1A1A1A")}
+            onMouseLeave={(e) => (e.currentTarget.style.background = "transparent")}
+          >
+            <FileText size={15} style={{ color: "#A3A3A3" }} />
+            Add documents
+          </button>
+        </div>
+      )}
+    </div>
+  )
+}
+
+// ─── Attachment chip preview — inlined, no external file needed ──────────────
+
+function AttachmentChip({
+  attachment,
+  uploading,
+  onRemove,
+}: {
+  attachment: Attachment | UploadingFile
+  uploading?: boolean
+  onRemove: () => void
+}) {
+  const isImage = attachment.type === "image"
+  const preview = "url" in attachment ? attachment.url : attachment.localPreview
+
+  return (
+    <div
+      className="relative flex items-center gap-2 pl-2 pr-1 py-1.5 rounded-xl shrink-0"
+      style={{ background: "#0D0D0D", border: "1px solid #1A1A1A" }}
+    >
+      {isImage && preview ? (
+        <img src={preview} alt={attachment.name} className="w-8 h-8 rounded-lg object-cover" />
+      ) : (
+        <div
+          className="w-8 h-8 rounded-lg flex items-center justify-center shrink-0"
+          style={{ background: "#1A1A1A" }}
+        >
+          <FileText size={14} style={{ color: "#A3A3A3" }} />
+        </div>
+      )}
+      <span className="text-xs max-w-[110px] truncate" style={{ color: "#D4D4D4" }}>
+        {attachment.name}
+      </span>
+      {uploading ? (
+        <Loader2 size={12} className="animate-spin mx-1.5" style={{ color: "#6B6B6B" }} />
+      ) : (
+        <button
+          type="button"
+          onClick={onRemove}
+          className="w-5 h-5 rounded-full flex items-center justify-center shrink-0"
+          style={{ background: "#1A1A1A", color: "#6B6B6B" }}
+        >
+          <X size={11} />
+        </button>
+      )}
+    </div>
   )
 }
 
@@ -364,17 +479,9 @@ function CodeBlock({ language, code }: { language: string; code: string }) {
 
   return (
     <>
-      <div
-        className="my-3 rounded-xl overflow-hidden"
-        style={{ border: "1px solid #1A1A1A" }}
-      >
-        <div
-          className="flex items-center justify-between px-4 py-1.5"
-          style={{ background: "#0D0D0D", borderBottom: "1px solid #1A1A1A" }}
-        >
-          <span className="text-xs font-mono" style={{ color: "#6B6B6B" }}>
-            {language || "code"}
-          </span>
+      <div className="my-3 rounded-xl overflow-hidden" style={{ border: "1px solid #1A1A1A" }}>
+        <div className="flex items-center justify-between px-4 py-1.5" style={{ background: "#0D0D0D", borderBottom: "1px solid #1A1A1A" }}>
+          <span className="text-xs font-mono" style={{ color: "#6B6B6B" }}>{language || "code"}</span>
           <div className="flex items-center gap-3">
             {canPreview && (
               <button
@@ -399,19 +506,12 @@ function CodeBlock({ language, code }: { language: string; code: string }) {
             </button>
           </div>
         </div>
-        <pre
-          className="p-4 overflow-auto text-xs font-mono leading-relaxed"
-          style={{ background: "#000000", color: "#4ADE80" }}
-        >
+        <pre className="p-4 overflow-auto text-xs font-mono leading-relaxed" style={{ background: "#000000", color: "#4ADE80" }}>
           <code>{code}</code>
         </pre>
       </div>
       {showPreview && (
-        <CodePreview
-          code={code}
-          language={language}
-          onClose={() => setShowPreview(false)}
-        />
+        <CodePreview code={code} language={language} onClose={() => setShowPreview(false)} />
       )}
     </>
   )
@@ -423,92 +523,56 @@ function SomaMarkdown({ content }: { content: string }) {
   return (
     <div className="text-sm" style={{ color: "#D4D4D4", lineHeight: "1.8" }}>
       <ReactMarkdown
+        remarkPlugins={[remarkGfm]}
         components={{
-          h1: ({ children }) => (
-            <h1 className="text-xl font-semibold mb-4 mt-2" style={{ color: "#ffffff" }}>
-              {children}
-            </h1>
-          ),
-          h2: ({ children }) => (
-            <h2 className="text-base font-semibold mb-3 mt-5" style={{ color: "#ffffff" }}>
-              {children}
-            </h2>
-          ),
-          h3: ({ children }) => (
-            <h3 className="text-sm font-semibold mb-2 mt-4" style={{ color: "#E5E5E5" }}>
-              {children}
-            </h3>
-          ),
-          p: ({ children }) => (
-            <p className="mb-3 last:mb-0" style={{ lineHeight: "1.8" }}>
-              {children}
-            </p>
-          ),
-          strong: ({ children }) => (
-            <strong className="font-semibold" style={{ color: "#ffffff" }}>
-              {children}
-            </strong>
-          ),
-          em: ({ children }) => (
-            <em className="italic" style={{ color: "#A3A3A3" }}>
-              {children}
-            </em>
-          ),
+          h1: ({ children }) => <h1 className="text-lg sm:text-xl font-semibold mb-4 mt-2" style={{ color: "#ffffff" }}>{children}</h1>,
+          h2: ({ children }) => <h2 className="text-base font-semibold mb-3 mt-5" style={{ color: "#ffffff" }}>{children}</h2>,
+          h3: ({ children }) => <h3 className="text-sm font-semibold mb-2 mt-4" style={{ color: "#E5E5E5" }}>{children}</h3>,
+          p: ({ children }) => <p className="mb-3 last:mb-0" style={{ lineHeight: "1.8" }}>{children}</p>,
+          strong: ({ children }) => <strong className="font-semibold" style={{ color: "#ffffff" }}>{children}</strong>,
+          em: ({ children }) => <em className="italic" style={{ color: "#A3A3A3" }}>{children}</em>,
           code: ({ children, className }) => {
             const isBlock = className?.includes("language-")
             const lang = className?.replace("language-", "") ?? ""
             if (isBlock) {
-              return (
-                <CodeBlock
-                  language={lang}
-                  code={String(children).replace(/\n$/, "")}
-                />
-              )
+              return <CodeBlock language={lang} code={String(children).replace(/\n$/, "")} />
             }
             return (
-              <code
-                className="px-1.5 py-0.5 rounded text-xs font-mono"
-                style={{
-                  background: "#0D0D0D",
-                  color: "#4ADE80",
-                  border: "1px solid #1A1A1A",
-                }}
-              >
+              <code className="px-1.5 py-0.5 rounded text-xs font-mono" style={{ background: "#0D0D0D", color: "#4ADE80", border: "1px solid #1A1A1A" }}>
                 {children}
               </code>
             )
           },
-          ul: ({ children }) => (
-            <ul
-              className="mb-3 space-y-1.5 pl-4"
-              style={{ listStyleType: "disc" }}
-            >
-              {children}
-            </ul>
-          ),
-          ol: ({ children }) => (
-            <ol
-              className="mb-3 space-y-1.5 pl-4"
-              style={{ listStyleType: "decimal" }}
-            >
-              {children}
-            </ol>
-          ),
-          li: ({ children }) => (
-            <li style={{ color: "#D4D4D4", lineHeight: "1.8" }}>
-              {children}
-            </li>
-          ),
-          hr: () => (
-            <hr className="my-6" style={{ borderColor: "#1A1A1A" }} />
-          ),
+          ul: ({ children }) => <ul className="mb-3 space-y-1.5 pl-4" style={{ listStyleType: "disc" }}>{children}</ul>,
+          ol: ({ children }) => <ol className="mb-3 space-y-1.5 pl-4" style={{ listStyleType: "decimal" }}>{children}</ol>,
+          li: ({ children }) => <li style={{ color: "#D4D4D4", lineHeight: "1.8" }}>{children}</li>,
+          hr: () => <hr className="my-6" style={{ borderColor: "#1A1A1A" }} />,
           blockquote: ({ children }) => (
-            <blockquote
-              className="border-l-2 pl-4 my-4 italic"
-              style={{ borderColor: "#2A2A2A", color: "#6B6B6B" }}
-            >
+            <blockquote className="border-l-2 pl-4 my-4 italic" style={{ borderColor: "#2A2A2A", color: "#6B6B6B" }}>
               {children}
             </blockquote>
+          ),
+          table: ({ children }) => (
+            <div className="my-4 overflow-x-auto rounded-lg" style={{ border: "1px solid #1A1A1A" }}>
+              <table className="w-full text-sm border-collapse">{children}</table>
+            </div>
+          ),
+          thead: ({ children }) => (
+            <thead style={{ background: "#0D0D0D" }}>{children}</thead>
+          ),
+          tbody: ({ children }) => <tbody>{children}</tbody>,
+          tr: ({ children }) => (
+            <tr style={{ borderBottom: "1px solid #1A1A1A" }}>{children}</tr>
+          ),
+          th: ({ children }) => (
+            <th className="text-left px-3 py-2 font-semibold" style={{ color: "#ffffff" }}>
+              {children}
+            </th>
+          ),
+          td: ({ children }) => (
+            <td className="px-3 py-2 align-top" style={{ color: "#D4D4D4" }}>
+              {children}
+            </td>
           ),
         }}
       >
@@ -528,10 +592,11 @@ export default function DashboardPage() {
   const [hasStarted, setHasStarted] = useState(false)
   const [conversationId, setConversationId] = useState<string | null>(null)
   const [currentlyGenerating, setCurrentlyGenerating] = useState<string>("")
-  const [attachments, setAttachments] = useState<PendingAttachment[]>([])
   const [feedbackMap, setFeedbackMap] = useState<Record<number, "up" | "down">>({})
-  const [currentProject, setCurrentProject] = useState<Record<string, string> | null>(null)
-  const [previewFiles, setPreviewFiles] = useState<Record<string, string> | null>(null)
+
+  // Attachments
+  const [pendingAttachments, setPendingAttachments] = useState<Attachment[]>([])
+  const [uploadingFiles, setUploadingFiles] = useState<UploadingFile[]>([])
 
   // Web Speech API
   const [voices, setVoices] = useState<SpeechSynthesisVoice[]>([])
@@ -586,120 +651,20 @@ export default function DashboardPage() {
   }
 
   function stopSpeaking() {
-    if (typeof window !== "undefined" && window.speechSynthesis)
-      window.speechSynthesis.cancel()
+    if (typeof window !== "undefined" && window.speechSynthesis) window.speechSynthesis.cancel()
     setSpeakingIndex(null)
     setIsPaused(false)
   }
 
-  // ── Attachments ──────────────────────────────────────────────────────────
-
-  async function handleFilesSelected(files: File[]) {
-    const placeholders: PendingAttachment[] = files.map((f) => ({
-      id: `local-${Date.now()}-${Math.random().toString(36).slice(2)}`,
-      name: f.name,
-      type: f.type.startsWith("image/") ? "image" : "document",
-      mimeType: f.type,
-      url: "",
-      size: f.size,
-      uploading: true,
-      localPreview: f.type.startsWith("image/") ? URL.createObjectURL(f) : undefined,
-    }))
-    setAttachments((prev) => [...prev, ...placeholders])
-
-    for (let i = 0; i < files.length; i++) {
-      const file = files[i]
-      const placeholder = placeholders[i]
-      try {
-        const formData = new FormData()
-        formData.append("file", file)
-        const res = await fetch("/api/ai/upload", { method: "POST", body: formData })
-        const data = await res.json()
-
-        if (data.success) {
-          setAttachments((prev) =>
-            prev.map((a) =>
-              a.id === placeholder.id
-                ? {
-                    id: data.id,
-                    name: data.name,
-                    type: data.type,
-                    mimeType: data.mimeType,
-                    url: data.url,
-                    size: data.size,
-                    extractedText: data.extractedText,
-                  }
-                : a
-            )
-          )
-        } else {
-          console.error("Upload failed:", data.error)
-          setAttachments((prev) => prev.filter((a) => a.id !== placeholder.id))
-        }
-      } catch (e) {
-        console.error(e)
-        setAttachments((prev) => prev.filter((a) => a.id !== placeholder.id))
-      } finally {
-        if (placeholder.localPreview) URL.revokeObjectURL(placeholder.localPreview)
-      }
-    }
-  }
-
-  function removeAttachment(id: string) {
-    setAttachments((prev) => {
-      const target = prev.find((a) => a.id === id)
-      if (target?.localPreview) URL.revokeObjectURL(target.localPreview)
-      return prev.filter((a) => a.id !== id)
-    })
-  }
-
-  function buildUserContent(text: string, atts: PendingAttachment[]): string | Array<Record<string, any>> {
-    const docTexts = atts
-      .filter((a) => a.type === "document" && a.extractedText)
-      .map((a) => `--- File: ${a.name} ---\n${a.extractedText}`)
-      .join("\n\n")
-
-    const images = atts.filter((a) => a.type === "image" && a.url)
-    const fullText = [text, docTexts].filter(Boolean).join("\n\n")
-
-    if (images.length === 0) return fullText || text
-
-    return [
-      { type: "text", text: fullText || "Describe what you see in the attached image(s)." },
-      ...images.map((img) => ({ type: "image_url", image_url: { url: img.url } })),
-    ]
-  }
-
-  function parseProjectFiles(content: string): { summary: string; files: Record<string, string> } | null {
-    const fileRegex = /===FILE:\s*(\/[^\s=]+)\s*===\n([\s\S]*?)(?=\n===FILE:|$)/g
-    const files: Record<string, string> = {}
-    let match: RegExpExecArray | null
-    let firstIndex = content.length
-
-    while ((match = fileRegex.exec(content)) !== null) {
-      const [, path, body] = match
-      files[path.trim()] = body.trim()
-      firstIndex = Math.min(firstIndex, match.index)
-    }
-
-    if (Object.keys(files).length === 0) return null
-    const summary = content.slice(0, firstIndex).trim()
-    return { summary, files }
-  }
-
-  async function persist(
-    userInput: string,
-    assistantContent: string,
-    meta?: Record<string, any>
-  ) {
+  async function persist(userInput: string, assistantContent: string, meta?: Record<string, any>) {
     if (!conversationId) {
       try {
         const res = await fetch("/api/ai/conversations", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
-            title: (userInput || "Attachment").slice(0, 60),
-            model: "openai/gpt-oss-120b",
+            title: userInput.slice(0, 60),
+            model: activeCapability === "general" ? "auto" : activeCapability,
             mode: activeCapability === "general" ? "chat" : activeCapability,
             messages: [
               { role: "user", content: userInput },
@@ -731,15 +696,60 @@ export default function DashboardPage() {
     }
   }
 
+  // ── Attachments ──────────────────────────────────────────────────────────
+
+  async function handleFilesSelected(files: File[]) {
+    for (const file of files) {
+      const isImage = file.type.startsWith("image/")
+      const localPreview = isImage ? URL.createObjectURL(file) : undefined
+
+      setUploadingFiles((prev) => [
+        ...prev,
+        { name: file.name, type: isImage ? "image" : "document", localPreview },
+      ])
+
+      try {
+        const formData = new FormData()
+        formData.append("file", file)
+        const res = await fetch("/api/ai/upload", { method: "POST", body: formData })
+        const data = await res.json()
+
+        if (data.success) {
+          setPendingAttachments((prev) => [
+            ...prev,
+            {
+              id: data.id,
+              name: data.name,
+              type: data.type,
+              mimeType: data.mimeType,
+              url: data.url,
+              extractedText: data.extractedText,
+              size: data.size,
+            },
+          ])
+        } else {
+          console.error("Upload failed:", data.error)
+        }
+      } catch (e) {
+        console.error("Upload error:", e)
+      } finally {
+        setUploadingFiles((prev) => prev.filter((f) => f.name !== file.name))
+      }
+    }
+  }
+
+  function removePendingAttachment(id: string) {
+    setPendingAttachments((prev) => prev.filter((a) => a.id !== id))
+  }
+
   // ── Core generation logic — shared by first send AND regenerate ──────────
   const runTurn = useCallback(
     async (
       userInput: string,
-      currentAttachments: PendingAttachment[],
+      attachmentsForThisMessage: Attachment[],
       historyForModel: Message[],
       forcedCapability?: Capability
     ) => {
-      const forceChat = currentAttachments.length > 0
       let resolvedTool: Exclude<Capability, "general"> =
         forcedCapability && forcedCapability !== "general"
           ? (forcedCapability as Exclude<Capability, "general">)
@@ -752,32 +762,21 @@ export default function DashboardPage() {
       }
 
       try {
-        if (!forceChat && resolvedTool === "image") {
+        if (resolvedTool === "image") {
           setCurrentlyGenerating("Generating image...")
           const res = await fetch("/api/ai/image", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-              prompt: `${userInput}, highly detailed, 4k quality`,
-              width: "1024",
-              height: "1024",
-            }),
+            body: JSON.stringify({ prompt: `${userInput}, highly detailed, 4k quality`, width: "1024", height: "1024" }),
           })
           const data = await res.json()
           if (data.success && data.imageUrl) {
-            setMessages((prev) => [
-              ...prev,
-              { role: "assistant", content: userInput, type: "image", imageUrl: data.imageUrl, capability: "image", timestamp: Date.now() },
-            ])
+            setMessages((prev) => [...prev, { role: "assistant", content: userInput, type: "image", imageUrl: data.imageUrl, capability: "image", timestamp: Date.now() }])
             await persist(userInput, userInput, { imageUrl: data.imageUrl })
           } else {
-            setMessages((prev) => [
-              ...prev,
-              { role: "assistant", content: "Failed to generate the image. Please try again.", type: "text", capability: "image", timestamp: Date.now() },
-            ])
+            setMessages((prev) => [...prev, { role: "assistant", content: "Failed to generate the image. Please try again.", type: "text", capability: "image", timestamp: Date.now() }])
           }
-
-        } else if (!forceChat && resolvedTool === "search") {
+        } else if (resolvedTool === "search") {
           setCurrentlyGenerating("Searching the web...")
           const res = await fetch("/api/ai/search", {
             method: "POST",
@@ -786,72 +785,40 @@ export default function DashboardPage() {
           })
           const data = await res.json()
           const content = data.answer || "No results found."
-          setMessages((prev) => [
-            ...prev,
-            { role: "assistant", content, type: "text", sources: data.sources, capability: "search", timestamp: Date.now() },
-          ])
+          setMessages((prev) => [...prev, { role: "assistant", content, type: "text", sources: data.sources, capability: "search", timestamp: Date.now() }])
           await persist(userInput, content)
-
-        } else if (!forceChat && resolvedTool === "audio") {
-          setCurrentlyGenerating("Writing your speech...")
-          const res = await fetch("/api/ai/chat", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-              messages: [
-                { role: "system", content: systemPrompts.audio },
-                { role: "user", content: userInput },
-              ],
-              provider: "groq",
-              maxTokens: 1024,
-            }),
-          })
-          const data = await res.json()
-          const content = data.content || "Sorry, I couldn't write that."
-          setMessages((prev) => [
-            ...prev,
-            { role: "assistant", content, type: "audio", capability: "audio", timestamp: Date.now() },
-          ])
-          await persist(userInput, content)
-
-        } else if (!forceChat && resolvedTool === "video") {
+        } else if (resolvedTool === "audio") {
+          setCurrentlyGenerating("Preparing speech...")
+          setMessages((prev) => [...prev, { role: "assistant", content: userInput, type: "audio", capability: "audio", timestamp: Date.now() }])
+          await persist(userInput, userInput)
+        } else if (resolvedTool === "video") {
           setCurrentlyGenerating("Generating video frame...")
           const res = await fetch("/api/ai/image", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-              prompt: `${userInput}, highly detailed, cinematic, 4k quality`,
-              width: "1280",
-              height: "768",
-            }),
+            body: JSON.stringify({ prompt: `${userInput}, highly detailed, cinematic, 4k quality`, width: "1280", height: "768" }),
           })
           const data = await res.json()
           if (data.success && data.imageUrl) {
-            setMessages((prev) => [
-              ...prev,
-              { role: "assistant", content: userInput, type: "video", imageUrl: data.imageUrl, capability: "video", timestamp: Date.now() },
-            ])
+            setMessages((prev) => [...prev, { role: "assistant", content: userInput, type: "video", imageUrl: data.imageUrl, capability: "video", timestamp: Date.now() }])
           } else {
-            setMessages((prev) => [
-              ...prev,
-              { role: "assistant", content: "Failed to generate the video frame. Please try again.", type: "text", capability: "video", timestamp: Date.now() },
-            ])
+            setMessages((prev) => [...prev, { role: "assistant", content: "Failed to generate the video frame. Please try again.", type: "text", capability: "video", timestamp: Date.now() }])
           }
-
         } else {
-          const isCode = !forceChat && resolvedTool === "code"
-          setCurrentlyGenerating(isCode ? "Writing code..." : currentAttachments.length ? "Reading your files..." : "Thinking...")
+          const isCode = resolvedTool === "code"
+          const hasImage = attachmentsForThisMessage.some((a) => a.type === "image")
+          const docContext = attachmentsForThisMessage
+            .filter((a) => a.type === "document" && a.extractedText)
+            .map((a) => `--- Content of ${a.name} ---\n${a.extractedText}`)
+            .join("\n\n")
+
+          setCurrentlyGenerating(hasImage ? "Looking at your image..." : isCode ? "Writing code..." : "Thinking...")
+
           const systemPrompt = isCode ? systemPrompts.code : systemPrompts.chat
 
-          let userContent = buildUserContent(userInput, currentAttachments)
-
-          if (isCode && currentProject) {
-            const projectContext = Object.entries(currentProject)
-              .map(([path, fileCode]) => `FILE ${path}:\n${fileCode}`)
-              .join("\n\n")
-            const instruction = `Current project files:\n\n${projectContext}\n\nUser request: ${userInput}\n\nOutput the complete updated set of project files.`
-            userContent = currentAttachments.length > 0 ? buildUserContent(instruction, currentAttachments) : instruction
-          }
+          const userContent = docContext
+            ? `${userInput}\n\nAttached document context:\n${docContext}`
+            : userInput
 
           const res = await fetch("/api/ai/chat", {
             method: "POST",
@@ -863,83 +830,48 @@ export default function DashboardPage() {
                 { role: "user", content: userContent },
               ],
               provider: "groq",
+              imageUrl: hasImage ? attachmentsForThisMessage.find((a) => a.type === "image")?.url : undefined,
               maxTokens: isCode ? 8192 : 1024,
             }),
           })
           const data = await res.json()
-          const raw = data.content || "Sorry, I couldn't respond."
-
-          let newMessage: Message
-          if (isCode) {
-            const parsed = parseProjectFiles(raw)
-            if (parsed) {
-              setCurrentProject(parsed.files)
-              newMessage = {
-                role: "assistant",
-                content: parsed.summary || "Project updated.",
-                type: "text",
-                capability: "code",
-                projectFiles: parsed.files,
-                timestamp: Date.now(),
-              }
-            } else {
-              newMessage = { role: "assistant", content: raw, type: "text", capability: "code", timestamp: Date.now() }
-            }
-          } else {
-            newMessage = {
-              role: "assistant",
-              content: raw,
-              type: "text",
-              capability: "general",
-              provider: data.provider,
-              model: data.model,
-              timestamp: Date.now(),
-            }
-          }
-
-          setMessages((prev) => [...prev, newMessage])
-          await persist(userInput || "(attachment)", newMessage.content)
+          const content = data.content || "Sorry, I couldn't respond."
+          setMessages((prev) => [
+            ...prev,
+            { role: "assistant", content, type: "text", capability: isCode ? "code" : "general", provider: data.provider, model: data.model, timestamp: Date.now() },
+          ])
+          await persist(userInput, content)
         }
       } catch (err) {
         console.error(err)
-        setMessages((prev) => [
-          ...prev,
-          { role: "assistant", content: "Something went wrong. Please try again.", type: "text", timestamp: Date.now() },
-        ])
+        setMessages((prev) => [...prev, { role: "assistant", content: "Something went wrong. Please try again.", type: "text", timestamp: Date.now() }])
       }
     },
-    [activeCapability, conversationId, currentProject]
+    [activeCapability, conversationId]
   )
 
   const handleSubmit = useCallback(async () => {
-    if ((!input.trim() && attachments.length === 0) || loading) return
-    if (attachments.some((a) => a.uploading)) return
+    if ((!input.trim() && pendingAttachments.length === 0) || loading) return
 
     const userInput = input.trim()
-    const currentAttachments = attachments
+    const attachmentsForThisMessage = pendingAttachments
     const historyForModel = messages
 
     setInput("")
-    setAttachments([])
+    setPendingAttachments([])
     setHasStarted(true)
     setLoading(true)
     if (textareaRef.current) textareaRef.current.style.height = "auto"
 
     setMessages((prev) => [
       ...prev,
-      {
-        role: "user",
-        content: userInput,
-        type: "text",
-        attachments: currentAttachments.length ? currentAttachments : undefined,
-        timestamp: Date.now(),
-      },
+      { role: "user", content: userInput, type: "text", attachments: attachmentsForThisMessage, timestamp: Date.now() },
     ])
 
-    await runTurn(userInput, currentAttachments, historyForModel)
+    await runTurn(userInput, attachmentsForThisMessage, historyForModel)
     setLoading(false)
     setCurrentlyGenerating("")
-  }, [input, loading, attachments, messages, runTurn])
+  }, [input, loading, messages, pendingAttachments, runTurn])
 
   // ── Message actions: copy / regenerate / edit / feedback ─────────────────
 
@@ -959,7 +891,7 @@ export default function DashboardPage() {
 
     setLoading(true)
     setMessages((prev) => prev.slice(0, index))
-    await runTurn(userMsg.content, (userMsg.attachments as PendingAttachment[]) ?? [], historyForModel, capabilityUsed)
+    await runTurn(userMsg.content, userMsg.attachments ?? [], historyForModel, capabilityUsed)
     setLoading(false)
     setCurrentlyGenerating("")
   }
@@ -981,16 +913,13 @@ export default function DashboardPage() {
     setMessages([])
     setHasStarted(false)
     setInput("")
-    setAttachments([])
     setConversationId(null)
     setActiveCapability("general")
+    setPendingAttachments([])
+    setUploadingFiles([])
     setFeedbackMap({})
-    setCurrentProject(null)
-    setPreviewFiles(null)
     if (textareaRef.current) textareaRef.current.style.height = "auto"
   }
-
-  const canSubmit = (input.trim() || attachments.length > 0) && !loading && !attachments.some((a) => a.uploading)
 
   function CapabilityBadge({ cap }: { cap?: Capability }) {
     if (!cap || cap === "general") return null
@@ -999,11 +928,7 @@ export default function DashboardPage() {
     return (
       <span
         className="inline-flex items-center gap-1 text-[10px] px-2 py-0.5 rounded-full"
-        style={{
-          background: "#0D0D0D",
-          color: "#6B6B6B",
-          border: "1px solid #1A1A1A",
-        }}
+        style={{ background: "#0D0D0D", color: "#6B6B6B", border: "1px solid #1A1A1A" }}
       >
         <found.icon size={9} />
         {found.label}
@@ -1011,12 +936,23 @@ export default function DashboardPage() {
     )
   }
 
+  function AttachmentPreviewRow() {
+    if (pendingAttachments.length === 0 && uploadingFiles.length === 0) return null
+    return (
+      <div className="flex items-center gap-2 mb-2 overflow-x-auto soma-chip-scroll">
+        {pendingAttachments.map((a) => (
+          <AttachmentChip key={a.id} attachment={a} onRemove={() => removePendingAttachment(a.id)} />
+        ))}
+        {uploadingFiles.map((f) => (
+          <AttachmentChip key={f.name} attachment={f} uploading onRemove={() => {}} />
+        ))}
+      </div>
+    )
+  }
+
   // ─────────────────────────────────────────────────────────────────────────────
   return (
-    <div
-      className="flex flex-col h-full"
-      style={{ background: "#000000" }}
-    >
+    <div className="flex flex-col h-full" style={{ background: "#000000" }}>
       <style>{`
         textarea::placeholder { color: #6B6B6B; }
         @keyframes kenburns {
@@ -1028,6 +964,8 @@ export default function DashboardPage() {
         .soma-chat-scroll::-webkit-scrollbar-thumb { background: #1A1A1A; border-radius: 99px; }
         .soma-chat-scroll::-webkit-scrollbar-thumb:hover { background: #2A2A2A; }
         .soma-chat-scroll { scrollbar-width: thin; scrollbar-color: #1A1A1A transparent; }
+        .soma-chip-scroll::-webkit-scrollbar { display: none; }
+        .soma-chip-scroll { -ms-overflow-style: none; scrollbar-width: none; }
       `}</style>
 
       {/* ── Message area ─────────────────────────────────────────────────────── */}
@@ -1035,7 +973,7 @@ export default function DashboardPage() {
         {!hasStarted ? (
 
           /* ── Hero landing ──────────────────────────────────────────────────── */
-          <div className="flex flex-col items-center justify-center min-h-full px-6 py-12">
+          <div className="flex flex-col items-center justify-center min-h-full px-4 sm:px-6 py-8 sm:py-12">
             <div className="w-full max-w-2xl">
 
               {/* Hero image */}
@@ -1053,40 +991,34 @@ export default function DashboardPage() {
                   alt="SOMA — AI that evolves with you."
                   width={800}
                   height={420}
-                  className="w-full object-contain relative z-10"
+                  className="w-full object-contain relative z-10 max-h-[200px] sm:max-h-none"
                   priority
                 />
               </div>
 
               {/* Divider */}
-              <div
-                className="mb-6"
-                style={{ height: "1px", background: "rgba(255,255,255,0.05)" }}
-              />
+              <div className="mb-5 sm:mb-6" style={{ height: "1px", background: "rgba(255,255,255,0.05)" }} />
 
               {/* Capability chips */}
-              <div className="flex items-center gap-2 flex-wrap justify-center mb-4">
-                {capabilities.map((cap) => (
-                  <CapabilityChip
-                    key={cap.value}
-                    cap={cap}
-                    active={activeCapability === cap.value}
-                    onClick={() => setActiveCapability(cap.value)}
-                  />
-                ))}
-              </div>
-
-              {attachments.length > 0 && (
-                <div className="flex items-center gap-2 flex-wrap justify-center mb-3">
-                  {attachments.map((a) => (
-                    <AttachmentChip key={a.id} attachment={a} uploading={a.uploading} onRemove={() => removeAttachment(a.id)} />
+              <div className="mb-4 -mx-4 px-4 sm:mx-0 sm:px-0">
+                <div className="flex items-center gap-2 overflow-x-auto soma-chip-scroll sm:flex-wrap sm:justify-center sm:overflow-visible">
+                  {capabilities.map((cap) => (
+                    <CapabilityChip
+                      key={cap.value}
+                      cap={cap}
+                      active={activeCapability === cap.value}
+                      onClick={() => setActiveCapability(cap.value)}
+                    />
                   ))}
                 </div>
-              )}
+              </div>
+
+              {/* Attachment previews */}
+              <AttachmentPreviewRow />
 
               {/* Input */}
               <div
-                className="flex items-end gap-3 px-4 py-3.5 rounded-2xl"
+                className="flex items-end gap-3 px-4 py-3 sm:py-3.5 rounded-2xl"
                 style={{
                   background: "#0D0D0D",
                   border: "1px solid rgba(255,255,255,0.07)",
@@ -1121,23 +1053,23 @@ export default function DashboardPage() {
                 />
                 <button
                   onClick={handleSubmit}
-                  disabled={!canSubmit}
+                  disabled={(!input.trim() && pendingAttachments.length === 0) || loading}
                   className="w-8 h-8 rounded-full flex items-center justify-center
                   shrink-0 transition-all duration-150 active:scale-95"
                   style={{
-                    background: canSubmit ? "#ffffff" : "#1A1A1A",
+                    background: (input.trim() || pendingAttachments.length > 0) && !loading ? "#ffffff" : "#1A1A1A",
                     marginBottom: "1px",
                   }}
                 >
                   {loading
                     ? <Loader2 size={13} className="animate-spin" style={{ color: "#6B6B6B" }} />
-                    : <ArrowUp size={13} style={{ color: canSubmit ? "#000000" : "#6B6B6B" }} />
+                    : <ArrowUp size={13} style={{ color: (input.trim() || pendingAttachments.length > 0) ? "#000000" : "#6B6B6B" }} />
                   }
                 </button>
               </div>
 
               {/* Footer */}
-              <p className="text-center text-xs mt-4" style={{ color: "#4B4B4B" }}>
+              <p className="text-center text-xs mt-4 px-2" style={{ color: "#4B4B4B" }}>
                 By messaging Soma, you agree to our{" "}
                 <a href="#" className="underline" style={{ color: "#6B6B6B" }}>Terms</a>
                 {" "}and{" "}
@@ -1149,44 +1081,62 @@ export default function DashboardPage() {
         ) : (
 
           /* ── Active conversation ─────────────────────────────────────────────── */
-          <div
-            className="min-h-full"
-            style={{ background: "#000000" }}
-          >
-            <div className="max-w-2xl mx-auto px-6 py-12 space-y-8">
+          <div className="min-h-full" style={{ background: "#000000" }}>
+            <div className="max-w-2xl mx-auto px-4 sm:px-6 py-8 sm:py-12 space-y-6 sm:space-y-8">
               {messages.map((msg, i) => (
                 <div key={i}>
                   {msg.role === "user" ? (
                     <div className="flex flex-col items-end gap-2">
-                      {msg.attachments && msg.attachments.length > 0 && (
-                        <div className="flex gap-2 flex-wrap justify-end max-w-[70%]">
-                          {msg.attachments.map((a) => (
-                            <AttachmentChip key={a.id} attachment={a} onRemove={() => {}} />
-                          ))}
+                      <div className="flex justify-end w-full">
+                        <div
+                          className="max-w-[85%] sm:max-w-[70%] px-4 py-3 rounded-2xl rounded-br-md text-sm"
+                          style={{
+                            background: "#111111",
+                            color: "#ffffff",
+                            border: "1px solid #1E1E1E",
+                            lineHeight: "1.7",
+                          }}
+                        >
+                          {msg.attachments && msg.attachments.length > 0 && (
+                            <div className="flex flex-wrap gap-1.5 mb-2">
+                              {msg.attachments.map((a) => {
+                                if (a.type === "image") {
+                                  return (
+                                    <img
+                                      key={a.id}
+                                      src={a.url}
+                                      alt={a.name}
+                                      className="w-16 h-16 rounded-lg object-cover"
+                                      style={{ border: "1px solid #2A2A2A" }}
+                                    />
+                                  )
+                                }
+                                return (
+                                  <a
+                                    key={a.id}
+                                    href={a.url}
+                                    target="_blank"
+                                    rel="noreferrer"
+                                    className="flex items-center gap-1.5 px-2 py-1.5 rounded-lg text-xs"
+                                    style={{ background: "#1A1A1A", color: "#A3A3A3" }}
+                                  >
+                                    <FileText size={11} />
+                                    {a.name}
+                                  </a>
+                                )
+                              })}
+                            </div>
+                          )}
+                          {msg.content}
                         </div>
-                      )}
-                      {msg.content && (
-                        <div className="flex flex-col items-end w-full">
-                          <div
-                            className="max-w-[70%] px-4 py-3 rounded-2xl rounded-br-md text-sm"
-                            style={{
-                              background: "#111111",
-                              color: "#ffffff",
-                              border: "1px solid #1E1E1E",
-                              lineHeight: "1.7",
-                            }}
-                          >
-                            {msg.content}
-                          </div>
-                          <MessageActions
-                            role="user"
-                            timestamp={msg.timestamp}
-                            onCopy={() => handleCopyMessage(msg.content)}
-                            onRegenerate={() => handleRegenerate(i + 1 < messages.length ? i + 1 : i)}
-                            onEdit={() => handleEditUser(i)}
-                          />
-                        </div>
-                      )}
+                      </div>
+                      <MessageActions
+                        role="user"
+                        timestamp={msg.timestamp}
+                        onCopy={() => handleCopyMessage(msg.content)}
+                        onRegenerate={() => handleRegenerate(i + 1 < messages.length ? i + 1 : i)}
+                        onEdit={() => handleEditUser(i)}
+                      />
                     </div>
                   ) : (
                     <div className="flex flex-col gap-2.5">
@@ -1196,55 +1146,41 @@ export default function DashboardPage() {
                           className="w-5 h-5 rounded-full overflow-hidden shrink-0"
                           style={{ border: "1px solid #1A1A1A" }}
                         >
-                          <Image
-                            src="/logo1.png"
-                            alt="Soma"
-                            width={20}
-                            height={20}
-                            className="object-cover w-full h-full"
-                          />
+                          <Image src="/logo1.png" alt="Soma" width={20} height={20} className="object-cover w-full h-full" />
                         </div>
-                        <span className="text-xs font-medium" style={{ color: "#6B6B6B" }}>
-                          Soma
-                        </span>
+                        <span className="text-xs font-medium" style={{ color: "#6B6B6B" }}>Soma</span>
                         <CapabilityBadge cap={msg.capability} />
                       </div>
 
                       {/* Content */}
                       <div className="pl-7">
                         {msg.type === "image" && msg.imageUrl ? (
-                          <div className="relative group inline-block">
+                          <div className="relative group inline-block max-w-full">
                             <img
                               src={msg.imageUrl}
                               alt={msg.content}
-                              className="rounded-2xl max-w-sm w-full"
+                              className="rounded-2xl max-w-full sm:max-w-sm w-full"
                               style={{ border: "1px solid #1A1A1A" }}
                               onError={(e) => {
                                 setTimeout(() => {
-                                  (e.target as HTMLImageElement).src =
-                                    msg.imageUrl! + "&retry=" + Date.now()
+                                  (e.target as HTMLImageElement).src = msg.imageUrl! + "&retry=" + Date.now()
                                 }, 2000)
                               }}
                             />
                             <div
                               className="absolute bottom-3 left-3 right-3 flex items-center
-                              justify-between opacity-0 group-hover:opacity-100
+                              justify-between opacity-100 sm:opacity-0 sm:group-hover:opacity-100
                               transition-opacity duration-200"
                             >
                               <span
                                 className="text-xs px-2 py-1 rounded-lg truncate max-w-[60%]"
-                                style={{
-                                  color: "rgba(255,255,255,0.6)",
-                                  background: "rgba(0,0,0,0.7)",
-                                  backdropFilter: "blur(8px)",
-                                }}
+                                style={{ color: "rgba(255,255,255,0.6)", background: "rgba(0,0,0,0.7)", backdropFilter: "blur(8px)" }}
                               >
                                 {msg.content}
                               </span>
                               <button
                                 onClick={() => window.open(msg.imageUrl, "_blank")}
-                                className="flex items-center gap-1.5 px-3 py-1.5
-                                rounded-xl text-xs font-medium"
+                                className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-medium"
                                 style={{ background: "#ffffff", color: "#000000" }}
                               >
                                 <Download size={10} />
@@ -1253,44 +1189,25 @@ export default function DashboardPage() {
                             </div>
                           </div>
                         ) : msg.type === "video" && msg.imageUrl ? (
-                          <div
-                            className="rounded-2xl overflow-hidden max-w-sm"
-                            style={{ border: "1px solid #1A1A1A" }}
-                          >
+                          <div className="rounded-2xl overflow-hidden max-w-full sm:max-w-sm" style={{ border: "1px solid #1A1A1A" }}>
                             <div className="aspect-video overflow-hidden">
                               <img
                                 src={msg.imageUrl}
                                 alt={msg.content}
                                 className="w-full h-full object-cover"
-                                style={{
-                                  animation:
-                                    "kenburns 8s ease-in-out infinite alternate",
-                                }}
+                                style={{ animation: "kenburns 8s ease-in-out infinite alternate" }}
                               />
                             </div>
                             <div
                               className="flex items-center justify-between px-3 py-2.5"
-                              style={{
-                                background: "#0A0A0A",
-                                borderTop: "1px solid #1A1A1A",
-                              }}
+                              style={{ background: "#0A0A0A", borderTop: "1px solid #1A1A1A" }}
                             >
-                              <span
-                                className="text-xs truncate max-w-[60%]"
-                                style={{ color: "#6B6B6B" }}
-                              >
-                                {msg.content}
-                              </span>
+                              <span className="text-xs truncate max-w-[60%]" style={{ color: "#6B6B6B" }}>{msg.content}</span>
                               <a
                                 href={msg.imageUrl}
                                 download="soma-frame.jpg"
-                                className="flex items-center gap-1.5 px-2.5 py-1.5
-                                rounded-xl text-xs font-medium"
-                                style={{
-                                  background: "#1A1A1A",
-                                  color: "#A3A3A3",
-                                  border: "1px solid #2A2A2A",
-                                }}
+                                className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl text-xs font-medium"
+                                style={{ background: "#1A1A1A", color: "#A3A3A3", border: "1px solid #2A2A2A" }}
                               >
                                 <Download size={10} />
                                 Save frame
@@ -1299,11 +1216,8 @@ export default function DashboardPage() {
                           </div>
                         ) : msg.type === "audio" ? (
                           <div
-                            className="inline-flex items-center gap-3 px-4 py-3 rounded-2xl max-w-sm"
-                            style={{
-                              background: "#0A0A0A",
-                              border: "1px solid #1A1A1A",
-                            }}
+                            className="inline-flex items-center gap-3 px-4 py-3 rounded-2xl max-w-full sm:max-w-sm"
+                            style={{ background: "#0A0A0A", border: "1px solid #1A1A1A" }}
                           >
                             <button
                               onClick={() => speakMessage(i, msg.content)}
@@ -1316,17 +1230,11 @@ export default function DashboardPage() {
                                 : <Play size={12} style={{ color: "#000000" }} />
                               }
                             </button>
-                            <p
-                              className="text-sm leading-relaxed flex-1"
-                              style={{ color: "#A3A3A3" }}
-                            >
-                              {msg.content}
-                            </p>
+                            <p className="text-sm leading-relaxed flex-1" style={{ color: "#A3A3A3" }}>{msg.content}</p>
                             {speakingIndex === i && (
                               <button
                                 onClick={stopSpeaking}
-                                className="w-6 h-6 rounded-full flex items-center
-                                justify-center shrink-0"
+                                className="w-6 h-6 rounded-full flex items-center justify-center shrink-0"
                                 style={{ background: "#1A1A1A" }}
                               >
                                 <Square size={9} style={{ color: "#6B6B6B" }} />
@@ -1336,23 +1244,8 @@ export default function DashboardPage() {
                         ) : (
                           <div>
                             <SomaMarkdown content={msg.content} />
-                            {msg.sources && msg.sources.length > 0 && (
-                              <SearchSources sources={msg.sources} />
-                            )}
+                            {msg.sources && msg.sources.length > 0 && <SearchSources sources={msg.sources} />}
                           </div>
-                        )}
-
-                        {msg.projectFiles && (
-                          <button
-                            onClick={() => setPreviewFiles(msg.projectFiles!)}
-                            className="mt-2 flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-medium transition-colors duration-150"
-                            style={{ background: "#1A1A1A", color: "#E5E5E5", border: "1px solid #2A2A2A" }}
-                            onMouseEnter={(e) => (e.currentTarget.style.background = "#222222")}
-                            onMouseLeave={(e) => (e.currentTarget.style.background = "#1A1A1A")}
-                          >
-                            <Play size={11} />
-                            Open live project ({Object.keys(msg.projectFiles).length} files)
-                          </button>
                         )}
 
                         <MessageActions
@@ -1373,31 +1266,14 @@ export default function DashboardPage() {
               {loading && (
                 <div className="flex flex-col gap-2.5">
                   <div className="flex items-center gap-2">
-                    <div
-                      className="w-5 h-5 rounded-full overflow-hidden shrink-0"
-                      style={{ border: "1px solid #1A1A1A" }}
-                    >
-                      <Image
-                        src="/logo1.png"
-                        alt="Soma"
-                        width={20}
-                        height={20}
-                        className="object-cover w-full h-full animate-pulse"
-                      />
+                    <div className="w-5 h-5 rounded-full overflow-hidden shrink-0" style={{ border: "1px solid #1A1A1A" }}>
+                      <Image src="/logo1.png" alt="Soma" width={20} height={20} className="object-cover w-full h-full animate-pulse" />
                     </div>
-                    <span className="text-xs font-medium" style={{ color: "#6B6B6B" }}>
-                      Soma
-                    </span>
+                    <span className="text-xs font-medium" style={{ color: "#6B6B6B" }}>Soma</span>
                   </div>
                   <div className="pl-7 flex items-center gap-2.5">
-                    <Loader2
-                      size={12}
-                      className="animate-spin"
-                      style={{ color: "#4B4B4B" }}
-                    />
-                    <span className="text-sm" style={{ color: "#4B4B4B" }}>
-                      {currentlyGenerating || "Thinking..."}
-                    </span>
+                    <Loader2 size={12} className="animate-spin" style={{ color: "#4B4B4B" }} />
+                    <span className="text-sm" style={{ color: "#4B4B4B" }}>{currentlyGenerating || "Thinking..."}</span>
                   </div>
                 </div>
               )}
@@ -1410,34 +1286,28 @@ export default function DashboardPage() {
 
       {/* ── Persistent input (after first message) ───────────────────────────── */}
       {hasStarted && (
-        <div
-          className="shrink-0 px-6 pb-5 pt-3"
-          style={{ background: "#000000" }}
-        >
+        <div className="shrink-0 px-4 sm:px-6 pb-4 sm:pb-5 pt-3" style={{ background: "#000000" }}>
           <div className="max-w-2xl mx-auto">
-            {/* Capability chips — always visible */}
-            <div className="flex items-center gap-2 flex-wrap mb-3">
-              {capabilities.map((cap) => (
-                <CapabilityChip
-                  key={cap.value}
-                  cap={cap}
-                  active={activeCapability === cap.value}
-                  onClick={() => setActiveCapability(cap.value)}
-                />
-              ))}
-            </div>
-
-            {attachments.length > 0 && (
-              <div className="flex items-center gap-2 flex-wrap mb-3">
-                {attachments.map((a) => (
-                  <AttachmentChip key={a.id} attachment={a} uploading={a.uploading} onRemove={() => removeAttachment(a.id)} />
+            {/* Capability chips */}
+            <div className="mb-3 -mx-4 px-4 sm:mx-0 sm:px-0">
+              <div className="flex items-center gap-2 overflow-x-auto soma-chip-scroll sm:flex-wrap sm:overflow-visible">
+                {capabilities.map((cap) => (
+                  <CapabilityChip
+                    key={cap.value}
+                    cap={cap}
+                    active={activeCapability === cap.value}
+                    onClick={() => setActiveCapability(cap.value)}
+                  />
                 ))}
               </div>
-            )}
+            </div>
+
+            {/* Attachment previews */}
+            <AttachmentPreviewRow />
 
             {/* Input */}
             <div
-              className="flex items-end gap-3 px-4 py-3.5 rounded-2xl"
+              className="flex items-end gap-3 px-4 py-3 sm:py-3.5 rounded-2xl"
               style={{
                 background: "#0D0D0D",
                 border: "1px solid rgba(255,255,255,0.07)",
@@ -1472,17 +1342,17 @@ export default function DashboardPage() {
               />
               <button
                 onClick={handleSubmit}
-                disabled={!canSubmit}
+                disabled={(!input.trim() && pendingAttachments.length === 0) || loading}
                 className="w-8 h-8 rounded-full flex items-center justify-center
                 shrink-0 transition-all duration-150 active:scale-95"
                 style={{
-                  background: canSubmit ? "#ffffff" : "#1A1A1A",
+                  background: (input.trim() || pendingAttachments.length > 0) && !loading ? "#ffffff" : "#1A1A1A",
                   marginBottom: "1px",
                 }}
               >
                 {loading
                   ? <Loader2 size={13} className="animate-spin" style={{ color: "#6B6B6B" }} />
-                  : <ArrowUp size={13} style={{ color: canSubmit ? "#000000" : "#6B6B6B" }} />
+                  : <ArrowUp size={13} style={{ color: (input.trim() || pendingAttachments.length > 0) ? "#000000" : "#6B6B6B" }} />
                 }
               </button>
             </div>
@@ -1502,10 +1372,6 @@ export default function DashboardPage() {
             </div>
           </div>
         </div>
-      )}
-
-      {previewFiles && (
-        <CodePreview files={previewFiles} onClose={() => setPreviewFiles(null)} />
       )}
     </div>
   )
