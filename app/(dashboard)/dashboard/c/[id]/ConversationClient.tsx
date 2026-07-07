@@ -1,7 +1,7 @@
 "use client"
 
-import SomaChat from "@/components/soma/SomaChat"
-import type { Capability, Message } from "@/components/soma/types"
+import { useRouter } from "next/navigation"
+import SomaDashboard, { type Capability, type DashboardMessage } from "@/components/soma/SomaDashboard"
 
 export default function ConversationClient({
   conversation,
@@ -10,22 +10,30 @@ export default function ConversationClient({
   conversation: any
   initialMessages: any[]
 }) {
-  const mapped: Message[] = initialMessages.map((m) => ({
+  const router = useRouter()
+
+  const mapped: DashboardMessage[] = initialMessages.map((m) => ({
     role: m.role,
     content: m.content,
-    type: m.metadata?.imageUrl ? "image" : "text",
+    type: m.metadata?.type ?? "text",
     imageUrl: m.metadata?.imageUrl,
-    capability: conversation.mode && conversation.mode !== "chat" ? conversation.mode : "general",
+    capability: m.metadata?.capability,
+    sources: m.metadata?.sources,
+    provider: m.metadata?.provider,
+    model: m.metadata?.model,
+    attachments: m.metadata?.attachments,
+    timestamp: m.created_at ? new Date(m.created_at).getTime() : undefined,
   }))
 
   const initialCapability: Capability =
     conversation.mode && conversation.mode !== "chat" ? conversation.mode : "general"
 
   return (
-    <SomaChat
+    <SomaDashboard
       initialMessages={mapped}
       initialCapability={initialCapability}
-      conversationId={conversation.id}
+      initialConversationId={conversation.id}
+      onNewConversation={() => router.push("/dashboard")}
     />
   )
 }
